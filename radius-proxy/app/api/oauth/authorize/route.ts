@@ -124,6 +124,15 @@ export async function POST(req: Request) {
   if (redirect_uri && !accept) {
     try {
       const out = new URL(redirect_uri)
+      // Validate redirect against configured allowlist or same-origin policy
+      const allowed = Array.isArray(config.REDIRECT_URIS) ? config.REDIRECT_URIS : []
+      const isAllowed = allowed.length
+        ? allowed.includes(out.toString()) || allowed.includes(out.origin + out.pathname)
+        : out.origin === origin
+      if (!isAllowed) {
+        console.error('[authorize] redirect_uri not allowed', { redirect_uri })
+        return NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'redirect_uri not allowed'), { status: 302 })
+      }
       out.searchParams.set('code', code)
       if (state) out.searchParams.set('state', state)
       console.info('[authorize] success', { user: username, class: res.class, ms: Date.now() - start })

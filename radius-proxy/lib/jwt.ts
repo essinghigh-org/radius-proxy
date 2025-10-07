@@ -9,6 +9,7 @@ type HSKeyInfo = { algo: "HS256"; secret: string }
 type KeyInfo = RSKeyInfo | HSKeyInfo
 
 const KEY_DIR = path.resolve(process.cwd(), ".keys")
+const HMAC_PATH = path.join(KEY_DIR, "jwt.hmac")
 
 function ensureKeyDir() {
   if (!fs.existsSync(KEY_DIR)) fs.mkdirSync(KEY_DIR, { recursive: true })
@@ -18,6 +19,11 @@ function loadOrCreateKeys(): KeyInfo {
   // Prefer environment-supplied PEM keys
   const privEnv = process.env.JWT_PRIVATE_KEY || ""
   const pubEnv = process.env.JWT_PUBLIC_KEY || ""
+  const hmacEnv = process.env.JWT_HS256_SECRET || ""
+  // If an HS256 secret is explicitly provided via env, prefer it
+  if (hmacEnv) {
+    return { algo: "HS256", secret: hmacEnv }
+  }
   if (privEnv && pubEnv) {
     const kid = crypto.createHash('sha256').update(pubEnv).digest('base64url')
     return { algo: "RS256", privateKey: privEnv, publicKey: pubEnv, kid }
@@ -32,6 +38,11 @@ function loadOrCreateKeys(): KeyInfo {
     const publicKey = fs.readFileSync(pubPath, "utf8")
     const kid = crypto.createHash('sha256').update(publicKey).digest('base64url')
     return { algo: "RS256", privateKey, publicKey, kid }
+  }
+  // If an HMAC secret has been persisted to disk, load it so signed tokens survive restarts.
+  if (fs.existsSync(HMAC_PATH)) {
+    const secret = fs.readFileSync(HMAC_PATH, "utf8")
+    return { algo: "HS256", secret }
   }
 
   // Attempt to generate an RSA keypair
@@ -49,6 +60,12 @@ function loadOrCreateKeys(): KeyInfo {
     // If RSA generation fails, log and fall back to an HMAC secret
     console.error('[jwt] failed to generate RSA keypair, falling back to HS256', err)
     const secret = crypto.randomBytes(32).toString("hex")
+    try {
+      ensureKeyDir()
+      fs.writeFileSync(HMAC_PATH, secret, { mode: 0o600 })
+    } catch (e) {
+      console.warn('[jwt] failed to persist HS256 secret to disk; tokens will not survive restarts', e)
+    }
     return { algo: "HS256", secret }
   }
 }
@@ -65,9 +82,10 @@ export function signToken(payload: object, opts?: jwt.SignOptions) {
 
 export function verifyToken(token: string) {
   if (keyinfo.algo === "RS256") {
-    return jwt.verify(token, keyinfo.publicKey)
+    // Restrict allowed algorithms explicitly to prevent algorithm confusion attacks.
+    return jwt.verify(token, keyinfo.publicKey, { algorithms: ["RS256"] } as jwt.VerifyOptions)
   }
-  return jwt.verify(token, keyinfo.secret)
+  return jwt.verify(token, keyinfo.secret, { algorithms: ["HS256"] } as jwt.VerifyOptions)
 }
 
 export function getKeyInfo() {

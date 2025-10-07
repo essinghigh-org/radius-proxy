@@ -11,6 +11,9 @@ type Config = {
   ISSUER?: string
   EMAIL_SUFFIX: string
   PERMITTED_CLASSES: string[]
+  // Optional explicit list of allowed redirect URIs for the OAuth client.
+  // If empty, only same-origin redirects are allowed.
+  REDIRECT_URIS: string[]
 }
 
 function parseTomlSimple(content: string): Record<string, string> {
@@ -51,6 +54,10 @@ function loadConfig(): Config {
     PERMITTED_CLASSES: (process.env.PERMITTED_CLASSES || base["PERMITTED_CLASSES"] || '')
       .split(',')
       .map(s=>s.trim())
+      .filter(Boolean),
+    REDIRECT_URIS: (process.env.REDIRECT_URIS || base["REDIRECT_URIS"] || '')
+      .split(',')
+      .map(s => s.trim())
       .filter(Boolean),
   }
   return cfg
