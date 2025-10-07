@@ -16,7 +16,7 @@ export async function POST(req: Request) {
       const [cid, secret] = b.split(":", 2)
       providedClientId = cid
       providedClientSecret = secret
-    } catch (_) {
+    } catch {
       // ignore
     }
   } else {
@@ -36,7 +36,6 @@ export async function POST(req: Request) {
     const entry = codes[code]
     if (!entry) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
 
-  const classAttr = entry.class || ""
     const scope = entry.scope || 'openid profile'
     const now = Math.floor(Date.now()/1000)
     let issuer = config.ISSUER

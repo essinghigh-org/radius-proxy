@@ -7,7 +7,6 @@ import { isClassPermitted } from "@/lib/access"
 
 declare global {
   // pointer for simple in-memory code store for demo only
-  // eslint-disable-next-line @typescript-eslint/naming-convention
   var _oauth_codes: Record<string, { username: string; class?: string; scope?: string; groups?: string[] }>
 }
 
@@ -120,7 +119,7 @@ export async function POST(req: Request) {
     return classAttr.split(/[;,]/).map(p=>p.trim()).filter(Boolean)
   }
   const groups = deriveGroups(res.class)
-  global._oauth_codes[code] = { username, class: res.class, scope, groups } as any
+  global._oauth_codes[code] = { username, class: res.class, scope, groups }
 
   if (redirect_uri && !accept) {
     try {

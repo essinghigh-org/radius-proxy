@@ -45,8 +45,9 @@ function loadOrCreateKeys(): KeyInfo {
     fs.writeFileSync(pubPath, publicKey)
     const kid = crypto.createHash('sha256').update(publicKey).digest('base64url')
     return { algo: "RS256", privateKey, publicKey, kid }
-  } catch (_err) {
-    // Fallback: generate a random HMAC secret
+  } catch (err) {
+    // If RSA generation fails, log and fall back to an HMAC secret
+    console.error('[jwt] failed to generate RSA keypair, falling back to HS256', err)
     const secret = crypto.randomBytes(32).toString("hex")
     return { algo: "HS256", secret }
   }

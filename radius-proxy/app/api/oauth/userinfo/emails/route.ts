@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 		// simple synthetic email; in real world map via directory lookup
 		const email = `${sub}@${config.EMAIL_SUFFIX}`
 		return NextResponse.json([{ email, primary: true }])
-	} catch (_) {
+	} catch {
 		return NextResponse.json({ error: 'invalid_token' }, { status: 401 })
 	}
 }

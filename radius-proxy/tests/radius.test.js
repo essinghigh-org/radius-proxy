@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const dgram = require('dgram')
 const crypto = require('crypto')
 const assert = require('assert')
@@ -55,9 +56,8 @@ function radiusAuthenticate(host, secret, username, password, timeout = 5000) {
     // bind the socket source address so NAS-IP matches the outbound IP
     try {
       client.bind(0, nasIpStr)
-    } catch (bindErr) {
+    } catch {
       // binding may fail in some environments; ignore and proceed
-      // console.warn('bind failed', bindErr)
     }
 
     const timer = setTimeout(()=>{
@@ -101,7 +101,7 @@ function radiusAuthenticate(host, secret, username, password, timeout = 5000) {
         if (l < 2) break
         attrOff += l
       }
-    } catch (e) {
+    } catch {
       // ignore hmac failures and send packet (server may not require it)
     }
 

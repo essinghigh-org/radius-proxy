@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getKeyInfo } from "@/lib/jwt"
 import crypto from "crypto"
 
-export async function GET(req: Request) {
+export async function GET() {
   const keyinfo = getKeyInfo()
   if (keyinfo.algo === 'RS256') {
     const pub = keyinfo.publicKey
@@ -16,7 +16,9 @@ export async function GET(req: Request) {
         { keys: [jwk] },
         { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,x-grafana-device-id" } }
       )
-    } catch (e) {
+    } catch (err) {
+      // Log the underlying error for diagnostics without exposing details to clients
+      console.error('[jwks] failed to generate JWK', err)
       return NextResponse.json(
         { keys: [] },
         { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,x-grafana-device-id" } }

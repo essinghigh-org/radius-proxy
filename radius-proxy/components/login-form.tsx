@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import Image from "next/image"
 
 interface LoginFormProps extends React.ComponentProps<'div'> {
   clientId: string
@@ -54,11 +55,14 @@ export function LoginForm({ className, clientId, redirectUri, state, error, erro
             </FieldGroup>
           </form>
           <div className="bg-muted relative hidden md:block">
-            <img
-              src="/grafana-logo.svg"
-              alt="Grafana Logo"
-              className="absolute inset-0 h-full w-full object-contain p-8 transform scale-50"
-            />
+            <div className="absolute inset-0 p-8">
+              <Image
+                src="/grafana-logo.svg"
+                alt="Grafana Logo"
+                className="object-contain transform scale-50"
+                fill
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
