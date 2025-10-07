@@ -35,6 +35,12 @@ export async function POST(req: Request) {
     const codes = global._oauth_codes || {}
     const entry = codes[code]
     if (!entry) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
+    // Reject expired authorization codes to prevent reuse.
+    if (entry.expiresAt && Date.now() > entry.expiresAt) {
+      // Remove expired code and fail with invalid_grant per spec.
+      delete codes[code]
+      return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
+    }
 
     const scope = entry.scope || 'openid profile'
     const now = Math.floor(Date.now()/1000)

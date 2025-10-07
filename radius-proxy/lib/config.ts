@@ -14,6 +14,8 @@ type Config = {
   // Optional explicit list of allowed redirect URIs for the OAuth client.
   // If empty, only same-origin redirects are allowed.
   REDIRECT_URIS: string[]
+  // OAuth authorization code time-to-live (seconds)
+  OAUTH_CODE_TTL: number
 }
 
 function parseTomlSimple(content: string): Record<string, string> {
@@ -59,6 +61,7 @@ function loadConfig(): Config {
       .split(',')
       .map(s => s.trim())
       .filter(Boolean),
+    OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 300),
   }
   return cfg
 }

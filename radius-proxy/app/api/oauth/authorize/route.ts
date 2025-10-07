@@ -2,12 +2,14 @@ import { NextResponse } from "next/server"
 import { radiusAuthenticate } from "@/lib/radius"
 import { config } from "@/lib/config"
 import { isClassPermitted } from "@/lib/access"
+import crypto from "crypto"
 
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code
 
 declare global {
   // pointer for simple in-memory code store for demo only
-  var _oauth_codes: Record<string, { username: string; class?: string; scope?: string; groups?: string[] }>
+  // Each entry may include an optional expiresAt timestamp (ms since epoch).
+  var _oauth_codes: Record<string, { username: string; class?: string; scope?: string; groups?: string[]; expiresAt?: number }>
 }
 
 // GET /api/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&state=...
@@ -105,21 +107,21 @@ export async function POST(req: Request) {
     return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Class not permitted'), { status: 302 })
   }
 
-  // Generate a simple one-time code (in-memory map would be needed; for demo we return a code directly)
-  const code = Buffer.from(`${username}:${Date.now()}`).toString("base64url")
-
+  // Generate a cryptographically unguessable one-time code and expiry.
+  const code = crypto.randomBytes(24).toString("base64url")
+  const expiresAt = Date.now() + (Number(config.OAUTH_CODE_TTL || 300) * 1000)
+  
   // For this demo, we'll store the mapping in a very naive global (suitable for single-process dev only)
   global._oauth_codes = global._oauth_codes || {}
   // Derive groups from RADIUS Class attribute.
   // Strategy: if class contains semicolons or commas, split; otherwise single value.
-  // Strip common suffixes like '_group' and map to simple names.
   function deriveGroups(classAttr?: string): string[] {
     if (!classAttr) return []
     // Only pass through the raw RADIUS class tokens (split on ; or ,)
     return classAttr.split(/[;,]/).map(p=>p.trim()).filter(Boolean)
   }
   const groups = deriveGroups(res.class)
-  global._oauth_codes[code] = { username, class: res.class, scope, groups }
+  global._oauth_codes[code] = { username, class: res.class, scope, groups, expiresAt }
 
   if (redirect_uri && !accept) {
     try {
