@@ -6,7 +6,6 @@ type Config = {
   OAUTH_CLIENT_SECRET: string
   RADIUS_HOST: string
   RADIUS_SECRET: string
-  // HTTP host used when deriving issuer and discovery URLs. This was previously HOSTNAME.
   HTTP_HOST: string
   HTTP_PORT: number
   ISSUER?: string
@@ -58,8 +57,7 @@ function loadConfig(): Config {
     OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "secret",
     RADIUS_HOST: process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1",
     RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
-    // Support both new HTTP_HOST and legacy HOSTNAME env/config keys for backwards compatibility.
-    HTTP_HOST: process.env.HTTP_HOST || process.env.HOSTNAME || base["HTTP_HOST"] || base["HOSTNAME"] || "0.0.0.0",
+    HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
     HTTP_PORT: Number(process.env.HTTP_PORT || base["HTTP_PORT"] || 3000),
     ISSUER: process.env.ISSUER || base["ISSUER"],
     EMAIL_SUFFIX: process.env.EMAIL_SUFFIX || base["EMAIL_SUFFIX"] || base["EMAIL_DOMAIN"] || 'example.local',
