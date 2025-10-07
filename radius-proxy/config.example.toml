@@ -11,6 +11,10 @@ RADIUS_SECRET = "testing123"
 # Server binding
 HOSTNAME = "0.0.0.0"
 HTTP_PORT = 3000
+
+# Public issuer (optional) - set this to your public HTTPS URL to force canonical external URLs
+# Example: ISSUER = "https://auth.example.com"
+ISSUER = "https://auth.example.com"
 ISSUER = "auth.example.com"
 
 # User Configuration
