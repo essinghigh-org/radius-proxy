@@ -11,6 +11,7 @@ RADIUS_SECRET = "testing123"
 # Server binding
 HOSTNAME = "0.0.0.0"
 HTTP_PORT = 3000
+ISSUER = "auth.example.com"
 
 # User Configuration
 EMAIL_SUFFIX = "example.com"

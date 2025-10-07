@@ -37,9 +37,17 @@ function parseTomlSimple(content: string): Record<string, string> {
 function loadConfig(): Config {
   const root = process.cwd()
   const cfgPath = path.join(root, "config.toml")
+  const exampleCfgPath = path.join(root, "config.example.toml")
   let base: Record<string, string> = {}
+  // Prefer explicit config.toml but fall back to config.example.toml if present (useful for examples)
+  let cfgFile = ""
   if (fs.existsSync(cfgPath)) {
-    const content = fs.readFileSync(cfgPath, "utf8")
+    cfgFile = cfgPath
+  } else if (fs.existsSync(exampleCfgPath)) {
+    cfgFile = exampleCfgPath
+  }
+  if (cfgFile) {
+    const content = fs.readFileSync(cfgFile, "utf8")
     base = parseTomlSimple(content)
   }
 

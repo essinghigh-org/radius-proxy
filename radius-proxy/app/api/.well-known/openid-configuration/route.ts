@@ -2,8 +2,12 @@ import { NextResponse } from "next/server"
 import { config } from "@/lib/config"
 
 export async function GET(req: Request) {
-  const proto = req.headers.get("x-forwarded-proto") || "http"
-  const host = req.headers.get("host") || config.HOSTNAME
+  // Respect reverse proxy headers when deriving the public issuer so discovery and tokens
+  // point at the canonical external HTTPS URL (nginx should set X-Forwarded-Proto and X-Forwarded-Host).
+  const xfProto = req.headers.get("x-forwarded-proto")
+  const xfHost = req.headers.get("x-forwarded-host")
+  const proto = xfProto || "http"
+  const host = xfHost || req.headers.get("host") || config.HOSTNAME
   const base = config.ISSUER || `${proto}://${host}`
   const issuer = config.ISSUER || base
   const data = {
