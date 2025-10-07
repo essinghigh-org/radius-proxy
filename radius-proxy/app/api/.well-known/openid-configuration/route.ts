@@ -16,6 +16,12 @@ export async function GET(req: Request) {
     token_endpoint: `${issuer}/api/oauth/token`,
     userinfo_endpoint: `${issuer}/api/oauth/userinfo`,
     jwks_uri: `${issuer}/api/.well-known/jwks.json`,
+    // advertise configuration values so operators can verify runtime config matches expected
+    op_config: {
+      http_host: config.HTTP_HOST,
+      http_port: config.HTTP_PORT,
+      issuer_from_config: !!config.ISSUER,
+    },
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code"],
     token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
