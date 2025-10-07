@@ -2,6 +2,12 @@ import { NextResponse } from "next/server"
 import { signToken } from "@/lib/jwt"
 import { config } from "@/lib/config"
 
+declare global {
+  // pointer for simple in-memory code store (same shape as used by authorize)
+  // Each entry may include an optional expiresAt timestamp (ms since epoch).
+  var _oauth_codes: Record<string, { username: string; class?: string; scope?: string; groups?: string[]; expiresAt?: number }>
+}
+
 export async function POST(req: Request) {
   const body = await req.formData()
   const grant_type = String(body.get("grant_type") || "")
@@ -32,7 +38,8 @@ export async function POST(req: Request) {
 
   if (grant_type === "authorization_code") {
     const code = String(body.get("code") || "")
-    const codes = global._oauth_codes || {}
+    // Ensure the global code store exists and we operate on the same object across modules
+    const codes = (global._oauth_codes = global._oauth_codes || {})
     const entry = codes[code]
     if (!entry) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
     // Reject expired authorization codes to prevent reuse.
@@ -46,7 +53,15 @@ export async function POST(req: Request) {
     const now = Math.floor(Date.now()/1000)
     let issuer = config.ISSUER
     if (!issuer) {
-      try { const u = new URL(req.url); issuer = `${u.protocol}//${u.host}` } catch { /* ignore */ }
+      try {
+        // Respect reverse proxy headers when deriving the issuer so tokens have correct iss.
+        const u = new URL(req.url)
+        const xfProto = req.headers.get('x-forwarded-proto')
+        const xfHost = req.headers.get('x-forwarded-host')
+        if (xfHost) u.host = xfHost
+        if (xfProto) u.protocol = xfProto + ':'
+        issuer = u.origin
+      } catch { /* ignore */ }
     }
     const aud = config.OAUTH_CLIENT_ID
   const email = `${entry.username}@${config.EMAIL_SUFFIX}`

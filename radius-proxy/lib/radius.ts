@@ -28,18 +28,31 @@ export async function radiusAuthenticate(
     const userBuf = Buffer.from(username, "utf8")
     attrs.push(Buffer.concat([Buffer.from([1, userBuf.length + 2]), userBuf]))
 
-    // User-Password (type 2) - simple PAP per RFC2865
+    // User-Password (type 2) - PAP per RFC2865 with proper 16-byte block chaining
     const pwdBuf = Buffer.from(password, "utf8")
-    const padded = Buffer.alloc(Math.ceil(pwdBuf.length / 16) * 16, 0)
+    const blockCount = Math.ceil(pwdBuf.length / 16) || 1
+    const padded = Buffer.alloc(blockCount * 16, 0)
     pwdBuf.copy(padded)
-    const md5 = crypto.createHash("md5").update(Buffer.concat([Buffer.from(secret, "utf8"), authenticator])).digest()
     const xored = Buffer.alloc(padded.length)
-    for (let i = 0; i < padded.length; i++) xored[i] = padded[i] ^ md5[i % 16]
+    // For each 16-byte block, MD5(secret + previous) where previous is authenticator for block 0,
+    // and the previous encrypted block for subsequent blocks (RFC2865 section 5.2).
+    let prev = authenticator
+    for (let b = 0; b < blockCount; b++) {
+      const md5 = crypto.createHash("md5").update(Buffer.concat([Buffer.from(secret, "utf8"), prev])).digest()
+      for (let i = 0; i < 16; i++) {
+        xored[b * 16 + i] = padded[b * 16 + i] ^ md5[i]
+      }
+      prev = xored.slice(b * 16, b * 16 + 16)
+    }
     attrs.push(Buffer.concat([Buffer.from([2, xored.length + 2]), xored]))
-
+ 
     // NAS-IP-Address (type 4) - optional, set to 127.0.0.1
     const nasIp = Buffer.from([127, 0, 0, 1])
     attrs.push(Buffer.concat([Buffer.from([4, 6]), nasIp]))
+    // NAS-Port (type 5) - set to zero by default
+    attrs.push(Buffer.concat([Buffer.from([5, 6]), Buffer.from([0, 0, 0, 0])]))
+    // Message-Authenticator (type 80) - placeholder 16 bytes (some servers require it)
+    attrs.push(Buffer.concat([Buffer.from([80, 18]), Buffer.alloc(16, 0)]))
 
     const attrBuf = Buffer.concat(attrs)
 
@@ -82,6 +95,25 @@ export async function radiusAuthenticate(
       }
     })
 
+    // Compute Message-Authenticator (HMAC-MD5) per RFC2869 if present and then send.
+    try {
+      const hmac = crypto.createHmac('md5', Buffer.from(secret, 'utf8')).update(packet).digest()
+      // find the Message-Authenticator attribute (type 80) in the packet and insert the value
+      let attrOff = 20
+      while (attrOff + 2 <= packet.length) {
+        const t = packet.readUInt8(attrOff)
+        const l = packet.readUInt8(attrOff + 1)
+        if (t === 80 && l === 18) {
+          for (let i = 0; i < 16; i++) packet[attrOff + 2 + i] = hmac[i]
+          break
+        }
+        if (l < 2) break
+        attrOff += l
+      }
+    } catch {
+      // ignore hmac failures; some servers don't require Message-Authenticator
+    }
+ 
     client.send(packet, 1812, host, (err) => {
       if (err) {
         clearTimeout(timer)
