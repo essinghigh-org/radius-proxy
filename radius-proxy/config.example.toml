@@ -15,4 +15,5 @@ ISSUER = "https://auth.example.com"
 
 # User Configuration
 EMAIL_SUFFIX = "example.com"
-PERMITTED_CLASSES = "admin_group"
+PERMITTED_CLASSES = "admin_group,editor_group"
+ADMIN_CLASSES = "admin_group"

@@ -82,7 +82,7 @@ async function run() {
 
   // Verify the access token contains the groups claim derived from RADIUS Class
   const { verifyToken } = await import('../lib/jwt.ts')
-  const payload = verifyToken(json.access_token) as { [k: string]: any }
+  const payload = verifyToken(json.access_token)
   assert.ok(Array.isArray(payload.groups), 'groups claim missing or not an array')
   assert.ok(payload.groups.includes('test_group'), `expected 'test_group' in groups, got ${JSON.stringify(payload.groups)}`)
 

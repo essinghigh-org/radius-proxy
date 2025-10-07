@@ -5,7 +5,7 @@ export default async function LoginPage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>
 }) {
-  const sp = searchParams || {}
+  const sp = (await searchParams) || {}
  
   const pick = (k: string) => {
     const v = sp[k]

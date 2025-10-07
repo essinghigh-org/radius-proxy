@@ -66,7 +66,10 @@ export async function POST(req: Request) {
     const aud = config.OAUTH_CLIENT_ID
   const email = `${entry.username}@${config.EMAIL_SUFFIX}`
   const groups = Array.isArray(entry.groups) ? entry.groups : ([] as string[])
-  const baseClaims = { sub: entry.username, name: entry.username, email, groups }
+  // Check if user should be grafana admin based on configured admin classes
+  const isGrafanaAdmin = groups.some(group => config.ADMIN_CLASSES.includes(group))
+  const role = isGrafanaAdmin ? "GrafanaAdmin" : undefined
+  const baseClaims = { sub: entry.username, name: entry.username, email, groups, grafana_admin: isGrafanaAdmin, role }
     const accessToken = signToken({ ...baseClaims, scope, iss: issuer, aud }, { expiresIn: "1h" })
     const idToken = signToken({ ...baseClaims, iss: issuer, aud, iat: now }, { expiresIn: "1h" })
 

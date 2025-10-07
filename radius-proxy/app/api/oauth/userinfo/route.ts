@@ -11,7 +11,9 @@ export async function GET(req: Request) {
     const groups = Array.isArray(payload.groups)
       ? (payload.groups as unknown[]).filter((g): g is string => typeof g === "string")
       : undefined
-    return NextResponse.json({ sub, name: sub, groups })
+    const grafana_admin = typeof payload.grafana_admin === "boolean" ? payload.grafana_admin : undefined
+    const role = typeof payload.role === "string" ? payload.role : undefined
+    return NextResponse.json({ sub, name: sub, groups, grafana_admin, role })
   } catch {
     return NextResponse.json({ error: "invalid_token" }, { status: 401 })
   }
