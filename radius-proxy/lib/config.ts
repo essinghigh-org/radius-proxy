@@ -57,10 +57,14 @@ function loadConfig(): Config {
     OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "secret",
     RADIUS_HOST: process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1",
     RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
-    HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
+    // Honor either HTTP_HOST or legacy HOSTNAME env/config key for backwards compatibility.
+    // This keeps behavior consistent with the example config and deployed environments that
+    // still set HOSTNAME.
+    HTTP_HOST: process.env.HTTP_HOST || process.env.HOSTNAME || base["HTTP_HOST"] || base["HOSTNAME"] || "0.0.0.0",
     HTTP_PORT: Number(process.env.HTTP_PORT || base["HTTP_PORT"] || 3000),
     ISSUER: process.env.ISSUER || base["ISSUER"],
-    EMAIL_SUFFIX: process.env.EMAIL_SUFFIX || base["EMAIL_SUFFIX"] || base["EMAIL_DOMAIN"] || 'example.local',
+    // Accept either EMAIL_SUFFIX or legacy EMAIL_DOMAIN from config files
+    EMAIL_SUFFIX: process.env.EMAIL_SUFFIX || base["EMAIL_SUFFIX"] || base["EMAIL_DOMAIN"] || "example.local",
     PERMITTED_CLASSES: (process.env.PERMITTED_CLASSES || base["PERMITTED_CLASSES"] || '')
       .split(',')
       .map(s=>s.trim())

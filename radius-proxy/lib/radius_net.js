@@ -7,11 +7,21 @@ function buildAccessRequest({ id, authenticator, username, password, secret, nas
   attrs.push(Buffer.concat([Buffer.from([1, userBuf.length + 2]), userBuf]))
 
   const pwdBuf = Buffer.from(password, 'utf8')
-  const padded = Buffer.alloc(Math.ceil(pwdBuf.length / 16) * 16, 0)
+  // Ensure we always allocate at least one 16-byte block (RFC2865 requires a minimum of 16 bytes)
+  const blockCount = Math.max(1, Math.ceil(pwdBuf.length / 16))
+  const padded = Buffer.alloc(blockCount * 16, 0)
   pwdBuf.copy(padded)
-  const md5 = crypto.createHash('md5').update(Buffer.concat([Buffer.from(secret, 'utf8'), authenticator])).digest()
   const xored = Buffer.alloc(padded.length)
-  for (let i = 0; i < padded.length; i++) xored[i] = padded[i] ^ md5[i % 16]
+
+  // Proper PAP encryption: MD5(secret + previous) per 16-byte block, chaining previous encrypted block
+  let prev = authenticator
+  for (let b = 0; b < blockCount; b++) {
+    const md5 = crypto.createHash('md5').update(Buffer.concat([Buffer.from(secret, 'utf8'), prev])).digest()
+    for (let i = 0; i < 16; i++) {
+      xored[b * 16 + i] = padded[b * 16 + i] ^ md5[i]
+    }
+    prev = xored.slice(b * 16, b * 16 + 16)
+  }
   attrs.push(Buffer.concat([Buffer.from([2, xored.length + 2]), xored]))
 
   const nasBuf = Buffer.from(nasIp.split('.').map((p) => Number(p)))
