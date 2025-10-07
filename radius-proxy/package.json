@@ -6,13 +6,13 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint",
-  "test:radius": "bun ./tests/radius.test.js",
-  "test:emails": "bun ./tests/userinfo_emails.test.js",
-  "test:groups": "bun ./tests/groups_claim.test.js",
-  "test:permitted": "bun ./tests/permitted_classes.test.js",
-  "test:all": "bun run test:radius && bun run test:emails && bun run test:groups && bun run test:permitted",
-  "typecheck": "tsc --noEmit"
+    "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
+    "test:radius": "bun ./tests/radius.test.js",
+    "test:emails": "bun ./tests/userinfo_emails.test.js",
+    "test:groups": "bun ./tests/groups_claim.test.js",
+    "test:permitted": "bun ./tests/permitted_classes.test.js",
+    "test:all": "bun run test:radius && bun run test:emails && bun run test:groups && bun run test:permitted",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",

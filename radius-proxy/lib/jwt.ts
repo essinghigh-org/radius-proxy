@@ -3,6 +3,7 @@ import fs from "fs"
 import path from "path"
 import crypto from "crypto"
 import jwt from "jsonwebtoken"
+import { error, warn } from "@/lib/log"
 
 type RSKeyInfo = { algo: "RS256"; privateKey: string; publicKey: string; kid: string }
 type HSKeyInfo = { algo: "HS256"; secret: string }
@@ -58,13 +59,13 @@ function loadOrCreateKeys(): KeyInfo {
     return { algo: "RS256", privateKey, publicKey, kid }
   } catch (err) {
     // If RSA generation fails, log and fall back to an HMAC secret
-    console.error('[jwt] failed to generate RSA keypair, falling back to HS256', err)
+    error('[jwt] failed to generate RSA keypair, falling back to HS256', err)
     const secret = crypto.randomBytes(32).toString("hex")
     try {
       ensureKeyDir()
       fs.writeFileSync(HMAC_PATH, secret, { mode: 0o600 })
     } catch (e) {
-      console.warn('[jwt] failed to persist HS256 secret to disk; tokens will not survive restarts', e)
+      warn('[jwt] failed to persist HS256 secret to disk; tokens will not survive restarts', e)
     }
     return { algo: "HS256", secret }
   }

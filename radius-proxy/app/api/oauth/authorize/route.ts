@@ -3,6 +3,7 @@ import { radiusAuthenticate } from "@/lib/radius"
 import { config } from "@/lib/config"
 import { isClassPermitted } from "@/lib/access"
 import crypto from "crypto"
+import { warn, error, info } from "@/lib/log"
 
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code
 
@@ -69,7 +70,7 @@ export async function POST(req: Request) {
   }
 
   if (!username || !password) {
-    console.warn('[authorize] missing credentials', { client: _client_id })
+    warn('[authorize] missing credentials', { client: _client_id })
     if (accept === 'json') return NextResponse.json({ error: "invalid_request" }, { status: 400 })
     return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_request', 'Missing credentials'), { status: 302 })
   }
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
   // Validate client id against configured value
   const EXPECTED_CLIENT = config.OAUTH_CLIENT_ID || "grafana"
   if (_client_id !== EXPECTED_CLIENT) {
-    console.warn('[authorize] invalid client', { provided: _client_id, expected: EXPECTED_CLIENT })
+    warn('[authorize] invalid client', { provided: _client_id, expected: EXPECTED_CLIENT })
     if (accept === 'json') return NextResponse.json({ error: "invalid_client" }, { status: 401 })
     return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_client', 'Client mismatch'), { status: 302 })
   }
@@ -90,19 +91,19 @@ export async function POST(req: Request) {
   try {
     res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password)
   } catch (e) {
-    console.error('[authorize] radius exception', { err: (e as Error).message })
+    error('[authorize] radius exception', { err: (e as Error).message })
     if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
     return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'RADIUS failure'), { status: 302 })
   }
   if (!res.ok) {
-    console.warn('[authorize] access_denied', { user: username, ms: Date.now() - start })
+    warn('[authorize] access_denied', { user: username, ms: Date.now() - start })
     if (accept === 'json') return NextResponse.json({ error: "access_denied" }, { status: 401 })
     return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Invalid credentials'), { status: 302 })
   }
 
   // Enforce permitted classes if configured
   if (!isClassPermitted(res.class)) {
-    console.warn('[authorize] forbidden_class', { user: username, class: res.class })
+    warn('[authorize] forbidden_class', { user: username, class: res.class })
     if (accept === 'json') return NextResponse.json({ error: 'access_denied', error_description: 'Class not permitted' }, { status: 403 })
     return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Class not permitted'), { status: 302 })
   }
@@ -123,7 +124,7 @@ export async function POST(req: Request) {
     }
   } catch (e) {
     // Defensive: don't let cleanup failures affect normal flow
-    console.warn('[authorize] oauth code cleanup failed', e)
+    warn('[authorize] oauth code cleanup failed', e)
   }
   // Derive groups from RADIUS Class attribute.
   // Strategy: if class contains semicolons or commas, split; otherwise single value.
@@ -144,15 +145,15 @@ export async function POST(req: Request) {
         ? allowed.includes(out.toString()) || allowed.includes(out.origin + out.pathname)
         : out.origin === origin
       if (!isAllowed) {
-        console.error('[authorize] redirect_uri not allowed', { redirect_uri })
+        error('[authorize] redirect_uri not allowed', { redirect_uri })
         return NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'redirect_uri not allowed'), { status: 302 })
       }
       out.searchParams.set('code', code)
       if (state) out.searchParams.set('state', state)
-      console.info('[authorize] success', { user: username, class: res.class, ms: Date.now() - start })
+      info('[authorize] success', { user: username, class: res.class, ms: Date.now() - start })
       return NextResponse.redirect(out.toString(), { status: 302 })
     } catch (e) {
-      console.error('[authorize] invalid redirect_uri', { redirect_uri, err: (e as Error).message })
+      error('[authorize] invalid redirect_uri', { redirect_uri, err: (e as Error).message })
       return NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'Bad redirect_uri'), { status: 302 })
     }
   }
