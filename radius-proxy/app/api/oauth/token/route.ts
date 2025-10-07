@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { signToken } from "@/lib/jwt"
 import { config } from "@/lib/config"
-import { getIssuer } from "@/lib/utils"
+import { getIssuer } from "@/lib/server-utils"
 
 declare global {
   // pointer for simple in-memory code store (same shape as used by authorize)

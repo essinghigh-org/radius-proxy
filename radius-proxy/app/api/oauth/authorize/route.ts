@@ -1,4 +1,4 @@
-import { getIssuer } from "@/lib/utils"
+import { getIssuer } from "@/lib/server-utils"
 import { NextResponse } from "next/server"
 import { radiusAuthenticate } from "@/lib/radius"
 import { config } from "@/lib/config"
