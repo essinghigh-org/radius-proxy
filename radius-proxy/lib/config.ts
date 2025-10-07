@@ -112,7 +112,7 @@ function getConfig(): Config {
     } else {
       if (_cachedConfig === null) _cachedConfig = loadConfig()
     }
-  } catch (e) {
+  } catch {
     // On error, fallback to last known config or fresh load
     _cachedConfig = _cachedConfig || loadConfig()
   }
@@ -125,7 +125,7 @@ function getConfig(): Config {
 export const config: Config = new Proxy({} as Config, {
   get(_, prop: string) {
     const c = getConfig()
-    return (c as any)[prop]
+    return c[prop as keyof Config]
   }
 })
 
@@ -142,16 +142,16 @@ export const config: Config = new Proxy({} as Config, {
     const watchPath = fs.existsSync(cfgPath) ? cfgPath : (fs.existsSync(exampleCfgPath) ? exampleCfgPath : null)
     if (!watchPath) return
     try {
-      fs.watch(watchPath, { persistent: false }, (eventType) => {
+      fs.watch(watchPath, { persistent: false }, () => {
         // Any change/rename reported for the watched file should invalidate
         // the cached config so subsequent accesses reload from disk.
         _cachedMtime = 0
         _cachedConfig = null
       })
-    } catch (e) {
+    } catch {
       // Ignore watcher setup failures and rely on the mtime-on-access logic.
     }
-  } catch (e) {
+  } catch {
     // Defensive: never throw during module initialization.
   }
 })()

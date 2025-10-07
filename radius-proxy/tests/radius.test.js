@@ -61,7 +61,7 @@ function radiusAuthenticate(host, secret, username, password, timeout = 5000, po
       try {
         client.bind(0, nasIpStr)
         console.log(`[test] client bound to ${nasIpStr}`)
-      } catch (e) {
+      } catch {
         console.log('[test] client bind failed; OS will pick source address')
       }
     } else {
@@ -144,7 +144,7 @@ async function run() {
         // Provide the shared secret so the response authenticator is computed per RFC2865
         const resp = buildAccessAccept({ id, authenticator: auth, classValue: 'test_group', secret })
         server.send(resp, rinfo.port, rinfo.address)
-      } catch (e) {
+      } catch {
         // ignore malformed packets in the fake server
       }
     })

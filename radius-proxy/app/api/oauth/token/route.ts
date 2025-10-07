@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { signToken } from "@/lib/jwt"
 import { config } from "@/lib/config"
+import { getIssuer } from "@/lib/utils"
 
 declare global {
   // pointer for simple in-memory code store (same shape as used by authorize)
@@ -51,18 +52,7 @@ export async function POST(req: Request) {
 
     const scope = entry.scope || 'openid profile'
     const now = Math.floor(Date.now()/1000)
-    let issuer = config.ISSUER
-    if (!issuer) {
-      try {
-        // Respect reverse proxy headers when deriving the issuer so tokens have correct iss.
-        const u = new URL(req.url)
-        const xfProto = req.headers.get('x-forwarded-proto')
-        const xfHost = req.headers.get('x-forwarded-host')
-        if (xfHost) u.host = xfHost
-        if (xfProto) u.protocol = xfProto + ':'
-        issuer = u.origin
-      } catch { /* ignore */ }
-    }
+    const issuer = getIssuer(req)
     const aud = config.OAUTH_CLIENT_ID
   const email = `${entry.username}@${config.EMAIL_SUFFIX}`
   const groups = Array.isArray(entry.groups) ? entry.groups : ([] as string[])

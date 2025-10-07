@@ -71,7 +71,7 @@ function buildAccessAccept({ id, authenticator, classValue, secret }) {
       ])
       const respAuth = crypto.createHash('md5').update(toHash).digest()
       respAuth.copy(header, 4)
-    } catch (e) {
+    } catch {
       // If computation fails fall back to copying request authenticator to remain compatible.
       authenticator.copy(header, 4)
     }

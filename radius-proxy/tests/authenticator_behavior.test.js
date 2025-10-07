@@ -16,7 +16,7 @@ async function run() {
       const auth = msg.slice(4, 20)
       const resp = buildAccessAccept({ id, authenticator: auth, classValue: 'good_group', secret: 's' })
       serverGood.send(resp, rinfo.port, rinfo.address)
-    } catch (e) {
+    } catch {
       // ignore malformed packets
     }
   })
@@ -37,7 +37,7 @@ async function run() {
       // Do not provide secret so buildAccessAccept copies request authenticator (legacy)
       const resp = buildAccessAccept({ id, authenticator: auth, classValue: 'legacy_group' })
       serverLegacy.send(resp, rinfo.port, rinfo.address)
-    } catch (e) {
+    } catch {
       // ignore malformed packets
     }
   })

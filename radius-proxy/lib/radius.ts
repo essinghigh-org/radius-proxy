@@ -144,7 +144,7 @@ export async function radiusAuthenticate(
 
     client.on("error", (err) => {
       clearTimeout(timer)
-      try { client.close() } catch (_) {}
+      try { client.close() } catch {}
       reject(err)
     })
 

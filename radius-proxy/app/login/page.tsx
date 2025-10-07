@@ -3,9 +3,9 @@ import { LoginForm } from "@/components/login-form"
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: Record<string, string | string[] | undefined>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
-  const sp = (await searchParams) || {}
+  const sp = await searchParams || {}
  
   const pick = (k: string) => {
     const v = sp[k]

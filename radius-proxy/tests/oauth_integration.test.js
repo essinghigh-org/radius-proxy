@@ -14,7 +14,7 @@ async function run() {
       const auth = msg.slice(4, 20)
       const resp = buildAccessAccept({ id, authenticator: auth, classValue: 'test_group' })
       server.send(resp, rinfo.port, rinfo.address)
-    } catch (e) {
+    } catch {
       // ignore malformed packets
     }
   })

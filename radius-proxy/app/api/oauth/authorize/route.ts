@@ -1,3 +1,4 @@
+import { getIssuer } from "@/lib/utils"
 import { NextResponse } from "next/server"
 import { radiusAuthenticate } from "@/lib/radius"
 import { config } from "@/lib/config"
@@ -57,17 +58,7 @@ export async function POST(req: Request) {
   const scope = String(body.get('scope') || 'openid profile')
   const start = Date.now()
   // derive origin for absolute redirects (respecting reverse proxy headers like in GET)
-  let origin: string
-  try {
-    const u = new URL(req.url)
-    const xfProto = req.headers.get('x-forwarded-proto')
-    const xfHost = req.headers.get('x-forwarded-host')
-    if (xfHost) u.host = xfHost
-    if (xfProto) u.protocol = xfProto + ':'
-    origin = u.origin
-  } catch {
-    origin = 'http://localhost:3000'
-  }
+  const origin = getIssuer(req)
 
   if (!username || !password) {
     warn('[authorize] missing credentials', { client: _client_id })
@@ -124,9 +115,9 @@ export async function POST(req: Request) {
         delete global._oauth_codes[k]
       }
     }
-  } catch (e) {
+  } catch {
     // Defensive: don't let cleanup failures affect normal flow
-    warn('[authorize] oauth code cleanup failed', e)
+    warn('[authorize] oauth code cleanup failed')
   }
   // Derive groups from RADIUS Class attribute.
   // Strategy: if class contains semicolons or commas, split; otherwise single value.

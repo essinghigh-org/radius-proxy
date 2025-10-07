@@ -36,13 +36,13 @@ function loadOrCreateKeys(): KeyInfo {
       const testSecret = process.env.JWT_TEST_HMAC || "test-hmac-secret"
       try {
         fs.writeFileSync(HMAC_PATH, testSecret, { mode: 0o600 })
-      } catch (e) {
-        warn('[jwt] failed to persist test HS256 secret; proceeding with in-memory test secret', e)
+      } catch {
+        warn('[jwt] failed to persist test HS256 secret; proceeding with in-memory test secret')
       }
       return { algo: "HS256", secret: testSecret }
-    } catch (e) {
+    } catch {
       // Fallback to in-memory test secret if anything goes wrong
-      warn('[jwt] test key initialization failed; using in-memory test secret', e)
+      warn('[jwt] test key initialization failed; using in-memory test secret')
       return { algo: "HS256", secret: process.env.JWT_TEST_HMAC || "test-hmac-secret" }
     }
   }
@@ -85,8 +85,8 @@ function loadOrCreateKeys(): KeyInfo {
     try {
       ensureKeyDir()
       fs.writeFileSync(HMAC_PATH, secret, { mode: 0o600 })
-    } catch (e) {
-      warn('[jwt] failed to persist HS256 secret to disk; tokens will not survive restarts', e)
+    } catch {
+      warn('[jwt] failed to persist HS256 secret to disk; tokens will not survive restarts')
     }
     return { algo: "HS256", secret }
   }
