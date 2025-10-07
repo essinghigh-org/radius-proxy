@@ -80,9 +80,10 @@ export async function POST(req: Request) {
 
   let res
   try {
-    const radiusPort = Number(config.RADIUS_PORT || 1812)
-    // Use a slightly longer timeout for network auth to tolerate slow networks in tests
-    res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password, 5000, radiusPort)
+  const radiusPort = Number(config.RADIUS_PORT || 1812)
+  // Convert configured timeout (seconds) to milliseconds for radius client
+  const radiusTimeoutMs = Math.max(0, Number(config.RADIUS_TIMEOUT || 5)) * 1000
+  res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password, radiusTimeoutMs, radiusPort)
   } catch (e) {
     error('[authorize] radius exception', { err: (e as Error).message })
     if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })

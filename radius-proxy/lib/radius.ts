@@ -1,6 +1,7 @@
 import dgram from "dgram"
 import crypto from "crypto"
 import { warn } from "@/lib/log"
+import { config } from "@/lib/config"
  
 // Minimal RADIUS client using UDP for Access-Request/Accept exchange.
 // This is intentionally small and supports only PAP (User-Password) and Class attribute extraction.
@@ -16,7 +17,7 @@ export async function radiusAuthenticate(
   secret: string,
   username: string,
   password: string,
-  timeout = 3000,
+  timeout?: number,
   port = 1812
 ): Promise<RadiusResult> {
   return new Promise((resolve, reject) => {
@@ -67,10 +68,17 @@ export async function radiusAuthenticate(
 
     const packet = Buffer.concat([header, attrBuf])
 
+    // Determine effective timeout in milliseconds. If caller provided a numeric
+    // timeout, use it directly (assumed to be milliseconds). Otherwise fall back
+    // to configured `RADIUS_TIMEOUT` (seconds) from config, defaulting to 5s.
+    const effectiveTimeoutMs = typeof timeout === 'number'
+      ? timeout
+      : (Number(config.RADIUS_TIMEOUT || 5) * 1000)
+
     const timer = setTimeout(() => {
       client.close()
       resolve({ ok: false })
-    }, timeout)
+    }, effectiveTimeoutMs)
 
     client.on("message", (msg) => {
       clearTimeout(timer)

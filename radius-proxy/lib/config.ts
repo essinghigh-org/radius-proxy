@@ -18,6 +18,8 @@ type Config = {
   REDIRECT_URIS: string[]
   // OAuth authorization code time-to-live (seconds)
   OAUTH_CODE_TTL: number
+  // RADIUS request timeout in seconds (how long to wait for RADIUS server reply)
+  RADIUS_TIMEOUT: number
 }
 
 function parseTomlSimple(content: string): Record<string, string> {
@@ -84,6 +86,7 @@ function loadConfig(): Config {
         .filter(Boolean)
     })(),
     OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 300),
+    RADIUS_TIMEOUT: Number(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"] || 5),
   }
   return cfg
 }

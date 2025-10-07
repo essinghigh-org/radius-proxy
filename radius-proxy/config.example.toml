@@ -7,6 +7,7 @@ OAUTH_CLIENT_SECRET = "secret"
 # RADIUS server
 RADIUS_HOST = "192.168.0.191"
 RADIUS_SECRET = "testing123"
+RADIUS_TIMEOUT = 5
 
 # Server binding
 HTTP_HOST = "0.0.0.0"
