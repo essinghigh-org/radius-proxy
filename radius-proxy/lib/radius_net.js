@@ -17,7 +17,7 @@ function buildAccessRequest({ id, authenticator, username, password, secret, nas
   const nasBuf = Buffer.from(nasIp.split('.').map((p) => Number(p)))
   attrs.push(Buffer.concat([Buffer.from([4, 6]), nasBuf]))
 
-  const attrBuf = Buffer.concat(attrs)
+  const attrBuf = attrs.length ? Buffer.concat(attrs) : Buffer.alloc(0)
   const len = 20 + attrBuf.length
   const header = Buffer.alloc(20)
   header.writeUInt8(1, 0)
@@ -33,7 +33,7 @@ function buildAccessAccept({ id, authenticator, classValue }) {
     const c = Buffer.from(classValue, 'utf8')
     attrs.push(Buffer.concat([Buffer.from([25, c.length + 2]), c]))
   }
-  const attrBuf = Buffer.concat(attrs)
+  const attrBuf = attrs.length ? Buffer.concat(attrs) : Buffer.alloc(0)
   const len = 20 + attrBuf.length
   const header = Buffer.alloc(20)
   header.writeUInt8(2, 0) // Access-Accept
@@ -52,6 +52,8 @@ function parseAccessResponse(msg) {
     const t = msg.readUInt8(offset)
     const l = msg.readUInt8(offset + 1)
     if (l < 2) break
+    // ensure attribute length does not run past end of packet
+    if (offset + l > msg.length) break
     const value = msg.slice(offset + 2, offset + l)
     if (t === 25) res.class = value.toString('utf8')
     offset += l
