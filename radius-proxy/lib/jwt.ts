@@ -25,6 +25,27 @@ function loadOrCreateKeys(): KeyInfo {
   if (hmacEnv) {
     return { algo: "HS256", secret: hmacEnv }
   }
+  // In test environments, provide a deterministic HS256 secret so unit tests are reproducible.
+  if (process.env.NODE_ENV === "test") {
+    try {
+      ensureKeyDir()
+      if (fs.existsSync(HMAC_PATH)) {
+        const secret = fs.readFileSync(HMAC_PATH, "utf8")
+        return { algo: "HS256", secret }
+      }
+      const testSecret = process.env.JWT_TEST_HMAC || "test-hmac-secret"
+      try {
+        fs.writeFileSync(HMAC_PATH, testSecret, { mode: 0o600 })
+      } catch (e) {
+        warn('[jwt] failed to persist test HS256 secret; proceeding with in-memory test secret', e)
+      }
+      return { algo: "HS256", secret: testSecret }
+    } catch (e) {
+      // Fallback to in-memory test secret if anything goes wrong
+      warn('[jwt] test key initialization failed; using in-memory test secret', e)
+      return { algo: "HS256", secret: process.env.JWT_TEST_HMAC || "test-hmac-secret" }
+    }
+  }
   if (privEnv && pubEnv) {
     const kid = crypto.createHash('sha256').update(pubEnv).digest('base64url')
     return { algo: "RS256", privateKey: privEnv, publicKey: pubEnv, kid }

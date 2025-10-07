@@ -37,7 +37,7 @@ function buildAccessRequest({ id, authenticator, username, password, secret, nas
   return Buffer.concat([header, attrBuf])
 }
 
-function buildAccessAccept({ id, authenticator, classValue }) {
+function buildAccessAccept({ id, authenticator, classValue, secret }) {
   const attrs = []
   if (classValue) {
     const c = Buffer.from(classValue, 'utf8')
@@ -45,11 +45,41 @@ function buildAccessAccept({ id, authenticator, classValue }) {
   }
   const attrBuf = attrs.length ? Buffer.concat(attrs) : Buffer.alloc(0)
   const len = 20 + attrBuf.length
+
+  // Build header with a placeholder authenticator; we'll compute the correct response
+  // authenticator (MD5) per RFC2865 when a shared secret is supplied.
   const header = Buffer.alloc(20)
   header.writeUInt8(2, 0) // Access-Accept
   header.writeUInt8(id, 1)
   header.writeUInt16BE(len, 2)
-  authenticator.copy(header, 4)
+  // default to zeros while we compute the real authenticator
+  header.fill(0, 4, 20)
+
+  // If a secret is provided, compute the Response Authenticator:
+  // MD5(Code + Identifier + Length + RequestAuthenticator + Attributes + SharedSecret)
+  if (secret) {
+    try {
+      const lenBuf = Buffer.alloc(2)
+      lenBuf.writeUInt16BE(len, 0)
+      const toHash = Buffer.concat([
+        Buffer.from([2]), // Code = Access-Accept
+        Buffer.from([id]), // Identifier
+        lenBuf,
+        authenticator, // Request Authenticator (from original request)
+        attrBuf,
+        Buffer.from(String(secret), 'utf8'),
+      ])
+      const respAuth = crypto.createHash('md5').update(toHash).digest()
+      respAuth.copy(header, 4)
+    } catch (e) {
+      // If computation fails fall back to copying request authenticator to remain compatible.
+      authenticator.copy(header, 4)
+    }
+  } else {
+    // Backwards-compatible behavior: copy the provided authenticator
+    authenticator.copy(header, 4)
+  }
+
   return Buffer.concat([header, attrBuf])
 }
 

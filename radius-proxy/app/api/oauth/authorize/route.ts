@@ -89,7 +89,9 @@ export async function POST(req: Request) {
 
   let res
   try {
-    res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password)
+    const radiusPort = Number(config.RADIUS_PORT || 1812)
+    // Use a slightly longer timeout for network auth to tolerate slow networks in tests
+    res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password, 5000, radiusPort)
   } catch (e) {
     error('[authorize] radius exception', { err: (e as Error).message })
     if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })

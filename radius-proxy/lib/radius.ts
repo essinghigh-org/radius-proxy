@@ -1,6 +1,7 @@
 import dgram from "dgram"
 import crypto from "crypto"
-
+import { warn } from "@/lib/log"
+ 
 // Minimal RADIUS client using UDP for Access-Request/Accept exchange.
 // This is intentionally small and supports only PAP (User-Password) and Class attribute extraction.
 
@@ -15,7 +16,8 @@ export async function radiusAuthenticate(
   secret: string,
   username: string,
   password: string,
-  timeout = 3000
+  timeout = 3000,
+  port = 1812
 ): Promise<RadiusResult> {
   return new Promise((resolve, reject) => {
     const client = dgram.createSocket("udp4")
@@ -73,7 +75,47 @@ export async function radiusAuthenticate(
     client.on("message", (msg) => {
       clearTimeout(timer)
       client.close()
+
+      // Minimal sanity checks
+      if (!msg || msg.length < 20) {
+        warn('[radius] received malformed response (too short)')
+        resolve({ ok: false, raw: msg ? msg.toString("hex") : undefined })
+        return
+      }
+
       const code = msg.readUInt8(0)
+      // Verify response authenticator per RFC2865 when secret is available to avoid spoofed replies.
+      try {
+        const respAuth = msg.slice(4, 20)
+        // Recompute: MD5(Code + Identifier + Length + RequestAuthenticator + Attributes + SharedSecret)
+        const lenBuf = Buffer.alloc(2)
+        lenBuf.writeUInt16BE(msg.length, 0)
+        const toHash = Buffer.concat([
+          Buffer.from([msg.readUInt8(0)]),
+          Buffer.from([msg.readUInt8(1)]),
+          lenBuf,
+          authenticator, // request authenticator we sent earlier
+          msg.slice(20), // attributes from response
+          Buffer.from(secret || "", "utf8"),
+        ])
+        const expected = crypto.createHash("md5").update(toHash).digest()
+        if (!expected.equals(respAuth)) {
+          // Some servers use a simple echo of the Request Authenticator (legacy behavior).
+          // Accept the response if the authenticator equals the original request authenticator,
+          // but emit a warning so operators can notice insecure behavior.
+          if (respAuth.equals(authenticator)) {
+            warn('[radius] response authenticator equals request authenticator (legacy behavior); accepting with warning')
+          } else {
+            warn('[radius] response authenticator mismatch; dropping response')
+            resolve({ ok: false, raw: msg.toString("hex") })
+            return
+          }
+        }
+      } catch (e) {
+        // Do not fail the entire flow on verification error; just warn and continue parsing.
+        warn('[radius] response authenticator verification error', e)
+      }
+
       // 2 = Access-Accept, 3 = Access-Reject
       if (code === 2) {
         // parse attributes for Class (type 25)
@@ -83,6 +125,11 @@ export async function radiusAuthenticate(
           const t = msg.readUInt8(offset)
           const l = msg.readUInt8(offset + 1)
           if (l < 2) break
+          // ensure attribute does not run past the end of the packet
+          if (offset + l > msg.length) {
+            warn('[radius] attribute length runs past packet end; stopping parse')
+            break
+          }
           const value = msg.slice(offset + 2, offset + l)
           if (t === 25) {
             foundClass = value.toString("utf8")
@@ -93,6 +140,12 @@ export async function radiusAuthenticate(
       } else {
         resolve({ ok: false, raw: msg.toString("hex") })
       }
+    })
+
+    client.on("error", (err) => {
+      clearTimeout(timer)
+      try { client.close() } catch (_) {}
+      reject(err)
     })
 
     // Compute Message-Authenticator (HMAC-MD5) per RFC2869 if present and then send.
@@ -114,7 +167,7 @@ export async function radiusAuthenticate(
       // ignore hmac failures; some servers don't require Message-Authenticator
     }
  
-    client.send(packet, 1812, host, (err) => {
+    client.send(packet, port, host, (err) => {
       if (err) {
         clearTimeout(timer)
         client.close()

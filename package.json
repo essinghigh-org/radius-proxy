@@ -1,0 +1,12 @@
+{
+  "name": "radius-proxy-root",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "test:all": "cd ./radius-proxy && bun run test:all",
+    "test:radius": "cd ./radius-proxy && bun run test:radius",
+    "test:authenticator": "cd ./radius-proxy && bun ./tests/authenticator_behavior.test.js",
+    "test:oauth": "cd ./radius-proxy && bun ./tests/oauth_integration.test.js",
+    "test:radius_ts": "cd ./radius-proxy && bun ./tests/radius_ts.test.js"
+  }
+}
