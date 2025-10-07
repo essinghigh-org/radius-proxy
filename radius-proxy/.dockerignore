@@ -1,0 +1,15 @@
+node_modules
+.git
+.next/cache
+.next/standalone
+Dockerfile
+README.md
+.env
+.vscode
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+pnpm-lock.yaml
+package-lock.json
+*.local
+*.log
