@@ -113,6 +113,18 @@ export async function POST(req: Request) {
   
   // For this demo, we'll store the mapping in a very naive global (suitable for single-process dev only)
   global._oauth_codes = global._oauth_codes || {}
+  // Remove any expired codes to avoid unbounded memory growth in long-running processes.
+  try {
+    for (const k of Object.keys(global._oauth_codes)) {
+      const e = global._oauth_codes[k]
+      if (e && typeof e.expiresAt === 'number' && Date.now() > e.expiresAt) {
+        delete global._oauth_codes[k]
+      }
+    }
+  } catch (e) {
+    // Defensive: don't let cleanup failures affect normal flow
+    console.warn('[authorize] oauth code cleanup failed', e)
+  }
   // Derive groups from RADIUS Class attribute.
   // Strategy: if class contains semicolons or commas, split; otherwise single value.
   function deriveGroups(classAttr?: string): string[] {
