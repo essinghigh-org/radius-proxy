@@ -9,7 +9,7 @@ Key Endpoints
 * `POST /api/oauth/authorize` – Validates user/pass via RADIUS and issues a one-time code (in-memory) or redirects back with `error=` on failure.
 * `POST /api/oauth/token` – Exchanges code for `access_token` + `id_token` (JWT). Adds `email` and `groups` claims (no direct role claim).
 * `GET /api/oauth/userinfo` – Basic user profile (sub, name, groups).
-* `GET /api/oauth/userinfo/emails` – Returns an array like `[{ email, primary: true }]` (required by Grafana when it requests emails). Email is synthesized as `<sub>@EMAIL_DOMAIN`.
+* `GET /api/oauth/userinfo/emails` – Returns an array like `[{ email, primary: true }]` (required by Grafana when it requests emails). Email is synthesized as `<sub>@EMAIL_SUFFIX`.
 
 Environment / Config
 --------------------

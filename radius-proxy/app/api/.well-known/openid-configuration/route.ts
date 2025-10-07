@@ -7,7 +7,6 @@ export async function GET(req: Request) {
   const xfProto = req.headers.get("x-forwarded-proto")
   const xfHost = req.headers.get("x-forwarded-host")
   const proto = xfProto || "http"
-  // Prefer explicit HTTP_HOST config (replaces HOSTNAME). Keep compatibility via config loader.
   const host = xfHost || req.headers.get("host") || config.HTTP_HOST
   const base = config.ISSUER || `${proto}://${host}`
   const issuer = config.ISSUER || base

@@ -1,6 +1,4 @@
 # radius-proxy configuration
-# NOTE: HOSTNAME was renamed to HTTP_HOST to make the meaning explicit.
-# Backwards compatibility is maintained: the app still reads HOSTNAME if set.
 
 # OAuth client credentials
 OAUTH_CLIENT_ID = "grafana"
