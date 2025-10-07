@@ -1,0 +1,17 @@
+# radius-proxy configuration
+
+# OAuth client credentials
+OAUTH_CLIENT_ID = "grafana"
+OAUTH_CLIENT_SECRET = "secret"
+
+# RADIUS server
+RADIUS_HOST = "192.168.0.191"
+RADIUS_SECRET = "testing123"
+
+# Server binding
+HOSTNAME = "0.0.0.0"
+HTTP_PORT = 3000
+
+# User Configuration
+EMAIL_SUFFIX = "example.com"
+PERMITTED_CLASSES = "admin_group"
