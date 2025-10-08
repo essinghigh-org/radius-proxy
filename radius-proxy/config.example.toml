@@ -1,8 +1,5 @@
 # radius-proxy configuration
 
-# Database Configuration
-DATABASE_PATH = "./data/oauth-codes.db"
-
 # OAuth client credentials
 OAUTH_CLIENT_ID = "grafana"
 OAUTH_CLIENT_SECRET = "secret"

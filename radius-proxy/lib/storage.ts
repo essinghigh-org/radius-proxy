@@ -1,7 +1,4 @@
-import fs from 'fs'
-import path from 'path'
-import { config } from './config'
-import { warn, info, error } from './log'
+import { info, warn } from './log'
 
 export interface OAuthCodeEntry {
   username: string
@@ -25,7 +22,6 @@ export interface StorageBackend {
   get(code: string): Promise<OAuthCodeEntry | undefined>
   delete(code: string): Promise<void>
   cleanup(): Promise<void>
-  close?(): Promise<void>
   
   // Refresh token methods
   setRefreshToken(token: string, entry: RefreshTokenEntry): Promise<void>
@@ -52,10 +48,15 @@ class MemoryStorage implements StorageBackend {
 
   async cleanup(): Promise<void> {
     const now = Date.now()
+    let cleaned = 0
     for (const [code, entry] of Object.entries(this.codes)) {
       if (entry.expiresAt && now > entry.expiresAt) {
         delete this.codes[code]
+        cleaned++
       }
+    }
+    if (cleaned > 0) {
+      info('[storage] Cleaned up expired OAuth codes', { count: cleaned })
     }
   }
 
@@ -73,224 +74,15 @@ class MemoryStorage implements StorageBackend {
 
   async cleanupRefreshTokens(): Promise<void> {
     const now = Date.now()
+    let cleaned = 0
     for (const [token, entry] of Object.entries(this.refreshTokens)) {
       if (entry.expiresAt && now > entry.expiresAt) {
         delete this.refreshTokens[token]
+        cleaned++
       }
     }
-  }
-}
-
-// Narrow subset of better-sqlite3 Database we rely on. Keeps typing lightweight without adding full dependency at type level in runtime.
-interface BetterSqlite3Database {
-  prepare(sql: string): {
-    run: (...args: unknown[]) => { changes: number }
-    get: (...args: unknown[]) => unknown
-  }
-  exec(sql: string): void
-  close(): void
-}
-
-class SqliteStorage implements StorageBackend {
-  private db: BetterSqlite3Database | null = null
-  private dbPath: string
-
-  constructor(dbPath: string) {
-    this.dbPath = dbPath
-  }
-
-  private async ensureDatabase(): Promise<void> {
-    if (this.db) return
-
-    try {
-      // Import better-sqlite3 dynamically to handle optional dependency
-    // Dynamic require keeps optional dependency pattern (only used when DATABASE_PATH provided)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database: new (path: string) => BetterSqlite3Database = require('better-sqlite3')
-      
-      // Ensure directory exists
-      const dir = path.dirname(this.dbPath)
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true })
-      }
-
-      this.db = new Database(this.dbPath)
-      
-      // Create table if it doesn't exist
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS oauth_codes (
-          code TEXT PRIMARY KEY,
-          username TEXT NOT NULL,
-          class TEXT,
-          scope TEXT,
-          groups TEXT, -- JSON string array
-          expires_at INTEGER
-        )
-      `)
-
-      // Create refresh tokens table
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS refresh_tokens (
-          token TEXT PRIMARY KEY,
-          username TEXT NOT NULL,
-          class TEXT,
-          scope TEXT,
-          groups TEXT, -- JSON string array
-          expires_at INTEGER,
-          client_id TEXT
-        )
-      `)
-
-      // Create index on expires_at for efficient cleanup
-      this.db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires_at 
-        ON oauth_codes(expires_at)
-      `)
-      
-      this.db.exec(`
-        CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires_at 
-        ON refresh_tokens(expires_at)
-      `)
-
-      info('[storage] SQLite database initialized', { path: this.dbPath })
-    } catch (err) {
-      error('[storage] Failed to initialize SQLite database', { 
-        path: this.dbPath, 
-        error: (err as Error).message 
-      })
-      throw err
-    }
-  }
-
-  private getDb(): BetterSqlite3Database {
-    if (!this.db) throw new Error('Database not initialized')
-    return this.db
-  }
-
-  async set(code: string, entry: OAuthCodeEntry): Promise<void> {
-    await this.ensureDatabase()
-    
-    const stmt = this.getDb().prepare(`
-      INSERT OR REPLACE INTO oauth_codes 
-      (code, username, class, scope, groups, expires_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `)
-    
-    stmt.run(
-      code,
-      entry.username,
-      entry.class || null,
-      entry.scope || null,
-      entry.groups ? JSON.stringify(entry.groups) : null,
-      entry.expiresAt || null
-    )
-  }
-
-  async get(code: string): Promise<OAuthCodeEntry | undefined> {
-    await this.ensureDatabase()
-    
-  const stmt = this.getDb().prepare(`
-      SELECT username, class, scope, groups, expires_at 
-      FROM oauth_codes 
-      WHERE code = ?
-    `)
-    
-    const row = stmt.get(code) as Record<string, unknown> | undefined
-    if (!row) return undefined
-
-    return {
-      username: String(row.username),
-      class: (row.class as string | null) || undefined,
-      scope: (row.scope as string | null) || undefined,
-      groups: row.groups ? JSON.parse(String(row.groups)) : undefined,
-      expiresAt: (row.expires_at as number | null) || undefined
-    }
-  }
-
-  async delete(code: string): Promise<void> {
-    await this.ensureDatabase()
-    
-  const stmt = this.getDb().prepare('DELETE FROM oauth_codes WHERE code = ?')
-    stmt.run(code)
-  }
-
-  async cleanup(): Promise<void> {
-    await this.ensureDatabase()
-    
-    const now = Date.now()
-  const stmt = this.getDb().prepare('DELETE FROM oauth_codes WHERE expires_at < ?')
-    const result = stmt.run(now)
-    
-    if (result.changes > 0) {
-      info('[storage] Cleaned up expired OAuth codes', { count: result.changes })
-    }
-  }
-
-  async setRefreshToken(token: string, entry: RefreshTokenEntry): Promise<void> {
-    await this.ensureDatabase()
-    
-  const stmt = this.getDb().prepare(`
-      INSERT OR REPLACE INTO refresh_tokens 
-      (token, username, class, scope, groups, expires_at, client_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-    
-    stmt.run(
-      token,
-      entry.username,
-      entry.class || null,
-      entry.scope || null,
-      entry.groups ? JSON.stringify(entry.groups) : null,
-      entry.expiresAt || null,
-      entry.clientId || null
-    )
-  }
-
-  async getRefreshToken(token: string): Promise<RefreshTokenEntry | undefined> {
-    await this.ensureDatabase()
-    
-  const stmt = this.getDb().prepare(`
-      SELECT username, class, scope, groups, expires_at, client_id 
-      FROM refresh_tokens 
-      WHERE token = ?
-    `)
-    
-    const row = stmt.get(token) as Record<string, unknown> | undefined
-    if (!row) return undefined
-
-    return {
-      username: String(row.username),
-      class: (row.class as string | null) || undefined,
-      scope: (row.scope as string | null) || undefined,
-      groups: row.groups ? JSON.parse(String(row.groups)) : undefined,
-      expiresAt: (row.expires_at as number | null) || undefined,
-      clientId: (row.client_id as string | null) || undefined
-    }
-  }
-
-  async deleteRefreshToken(token: string): Promise<void> {
-    await this.ensureDatabase()
-    
-  const stmt = this.getDb().prepare('DELETE FROM refresh_tokens WHERE token = ?')
-    stmt.run(token)
-  }
-
-  async cleanupRefreshTokens(): Promise<void> {
-    await this.ensureDatabase()
-    
-    const now = Date.now()
-  const stmt = this.getDb().prepare('DELETE FROM refresh_tokens WHERE expires_at < ?')
-    const result = stmt.run(now)
-    
-    if (result.changes > 0) {
-      info('[storage] Cleaned up expired refresh tokens', { count: result.changes })
-    }
-  }
-
-  async close(): Promise<void> {
-    if (this.db) {
-      this.db.close()
-      this.db = null
+    if (cleaned > 0) {
+      info('[storage] Cleaned up expired refresh tokens', { count: cleaned })
     }
   }
 }
@@ -300,21 +92,8 @@ let storageInstance: StorageBackend | null = null
 
 export function getStorage(): StorageBackend {
   if (!storageInstance) {
-    const dbPath = config.DATABASE_PATH
-    if (dbPath) {
-      try {
-        storageInstance = new SqliteStorage(dbPath)
-        info('[storage] Using SQLite storage', { path: dbPath })
-      } catch (err) {
-        warn('[storage] Failed to initialize SQLite, falling back to memory storage', { 
-          error: (err as Error).message 
-        })
-        storageInstance = new MemoryStorage()
-      }
-    } else {
-      storageInstance = new MemoryStorage()
-      info('[storage] Using in-memory storage')
-    }
+    storageInstance = new MemoryStorage()
+    info('[storage] Using in-memory storage')
   }
   return storageInstance
 }
@@ -330,12 +109,9 @@ export async function cleanupExpiredCodes(): Promise<void> {
   }
 }
 
-// Close storage when process exits
+// Close storage when process exits (no-op for memory storage but kept for API compatibility)
 export async function closeStorage(): Promise<void> {
-  if (storageInstance && storageInstance.close) {
-    await storageInstance.close()
-    storageInstance = null
-  }
+  storageInstance = null
 }
 
 // Register cleanup handlers

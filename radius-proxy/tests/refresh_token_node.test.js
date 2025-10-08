@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /* eslint-disable @typescript-eslint/no-require-imports */
 
-// Simple test for refresh token functionality using Node.js instead of Bun to avoid SQLite compatibility issues
+// Simple test for refresh token functionality using Node.js
 
 const crypto = require('crypto')
 
 console.log('Testing refresh token functionality (Node.js)...')
 
-// Mock the config to force memory storage
+// Mock the config for memory storage
 const mockConfig = {
   OAUTH_CLIENT_ID: 'grafana',
   OAUTH_CLIENT_SECRET: 'secret',
@@ -26,9 +26,6 @@ Module.prototype.require = function(id) {
   }
   return originalRequire.apply(this, arguments)
 }
-
-// Force memory storage by unsetting DATABASE_PATH
-delete process.env.DATABASE_PATH
 
 async function testRefreshTokens() {
   try {
