@@ -44,8 +44,6 @@ function parseTomlSimple(content: string): Record<string, string> {
     let val = line.slice(eq + 1).trim()
     // If the value starts a multi-line array or inline table, accumulate until matching bracket
     if ((val.startsWith("[") && !val.endsWith("]")) || (val.startsWith("{") && !val.endsWith("}"))) {
-      const open = val[0]
-      const close = open === '[' ? ']' : '}'
       let acc = val
       // track depth of nested brackets in case of nested arrays
       let depth = (acc.match(/[\[{]/g) || []).length - (acc.match(/[\]}]/g) || []).length

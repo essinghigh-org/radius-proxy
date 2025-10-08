@@ -81,8 +81,18 @@ class MemoryStorage implements StorageBackend {
   }
 }
 
+// Narrow subset of better-sqlite3 Database we rely on. Keeps typing lightweight without adding full dependency at type level in runtime.
+interface BetterSqlite3Database {
+  prepare(sql: string): {
+    run: (...args: unknown[]) => { changes: number }
+    get: (...args: unknown[]) => unknown
+  }
+  exec(sql: string): void
+  close(): void
+}
+
 class SqliteStorage implements StorageBackend {
-  private db: any = null
+  private db: BetterSqlite3Database | null = null
   private dbPath: string
 
   constructor(dbPath: string) {
@@ -94,7 +104,9 @@ class SqliteStorage implements StorageBackend {
 
     try {
       // Import better-sqlite3 dynamically to handle optional dependency
-      const Database = require('better-sqlite3')
+    // Dynamic require keeps optional dependency pattern (only used when DATABASE_PATH provided)
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database: new (path: string) => BetterSqlite3Database = require('better-sqlite3')
       
       // Ensure directory exists
       const dir = path.dirname(this.dbPath)
@@ -150,10 +162,15 @@ class SqliteStorage implements StorageBackend {
     }
   }
 
+  private getDb(): BetterSqlite3Database {
+    if (!this.db) throw new Error('Database not initialized')
+    return this.db
+  }
+
   async set(code: string, entry: OAuthCodeEntry): Promise<void> {
     await this.ensureDatabase()
     
-    const stmt = this.db.prepare(`
+    const stmt = this.getDb().prepare(`
       INSERT OR REPLACE INTO oauth_codes 
       (code, username, class, scope, groups, expires_at)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -172,28 +189,28 @@ class SqliteStorage implements StorageBackend {
   async get(code: string): Promise<OAuthCodeEntry | undefined> {
     await this.ensureDatabase()
     
-    const stmt = this.db.prepare(`
+  const stmt = this.getDb().prepare(`
       SELECT username, class, scope, groups, expires_at 
       FROM oauth_codes 
       WHERE code = ?
     `)
     
-    const row = stmt.get(code)
+    const row = stmt.get(code) as Record<string, unknown> | undefined
     if (!row) return undefined
 
     return {
-      username: row.username,
-      class: row.class || undefined,
-      scope: row.scope || undefined,
-      groups: row.groups ? JSON.parse(row.groups) : undefined,
-      expiresAt: row.expires_at || undefined
+      username: String(row.username),
+      class: (row.class as string | null) || undefined,
+      scope: (row.scope as string | null) || undefined,
+      groups: row.groups ? JSON.parse(String(row.groups)) : undefined,
+      expiresAt: (row.expires_at as number | null) || undefined
     }
   }
 
   async delete(code: string): Promise<void> {
     await this.ensureDatabase()
     
-    const stmt = this.db.prepare('DELETE FROM oauth_codes WHERE code = ?')
+  const stmt = this.getDb().prepare('DELETE FROM oauth_codes WHERE code = ?')
     stmt.run(code)
   }
 
@@ -201,7 +218,7 @@ class SqliteStorage implements StorageBackend {
     await this.ensureDatabase()
     
     const now = Date.now()
-    const stmt = this.db.prepare('DELETE FROM oauth_codes WHERE expires_at < ?')
+  const stmt = this.getDb().prepare('DELETE FROM oauth_codes WHERE expires_at < ?')
     const result = stmt.run(now)
     
     if (result.changes > 0) {
@@ -212,7 +229,7 @@ class SqliteStorage implements StorageBackend {
   async setRefreshToken(token: string, entry: RefreshTokenEntry): Promise<void> {
     await this.ensureDatabase()
     
-    const stmt = this.db.prepare(`
+  const stmt = this.getDb().prepare(`
       INSERT OR REPLACE INTO refresh_tokens 
       (token, username, class, scope, groups, expires_at, client_id)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -232,29 +249,29 @@ class SqliteStorage implements StorageBackend {
   async getRefreshToken(token: string): Promise<RefreshTokenEntry | undefined> {
     await this.ensureDatabase()
     
-    const stmt = this.db.prepare(`
+  const stmt = this.getDb().prepare(`
       SELECT username, class, scope, groups, expires_at, client_id 
       FROM refresh_tokens 
       WHERE token = ?
     `)
     
-    const row = stmt.get(token)
+    const row = stmt.get(token) as Record<string, unknown> | undefined
     if (!row) return undefined
 
     return {
-      username: row.username,
-      class: row.class || undefined,
-      scope: row.scope || undefined,
-      groups: row.groups ? JSON.parse(row.groups) : undefined,
-      expiresAt: row.expires_at || undefined,
-      clientId: row.client_id || undefined
+      username: String(row.username),
+      class: (row.class as string | null) || undefined,
+      scope: (row.scope as string | null) || undefined,
+      groups: row.groups ? JSON.parse(String(row.groups)) : undefined,
+      expiresAt: (row.expires_at as number | null) || undefined,
+      clientId: (row.client_id as string | null) || undefined
     }
   }
 
   async deleteRefreshToken(token: string): Promise<void> {
     await this.ensureDatabase()
     
-    const stmt = this.db.prepare('DELETE FROM refresh_tokens WHERE token = ?')
+  const stmt = this.getDb().prepare('DELETE FROM refresh_tokens WHERE token = ?')
     stmt.run(token)
   }
 
@@ -262,7 +279,7 @@ class SqliteStorage implements StorageBackend {
     await this.ensureDatabase()
     
     const now = Date.now()
-    const stmt = this.db.prepare('DELETE FROM refresh_tokens WHERE expires_at < ?')
+  const stmt = this.getDb().prepare('DELETE FROM refresh_tokens WHERE expires_at < ?')
     const result = stmt.run(now)
     
     if (result.changes > 0) {

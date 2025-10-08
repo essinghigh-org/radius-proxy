@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // Test the storage abstraction layer (memory and SQLite)
 // Simpler version that works with the current CommonJS setup
@@ -7,7 +8,7 @@ const fs = require('fs')
 const path = require('path')
 
 // Mock config before requiring storage
-const originalEnv = process.env.DATABASE_PATH
+const _originalEnv = process.env.DATABASE_PATH
 const testDir = path.join(__dirname, '..', 'test-data')
 const testDbPath = path.join(testDir, `test-${Date.now()}.db`)
 
@@ -257,13 +258,13 @@ runTests().then(() => {
     if (fs.existsSync(testDir) && fs.readdirSync(testDir).length === 0) {
       fs.rmdirSync(testDir)
     }
-  } catch (e) {
+  } catch {
     // Ignore cleanup errors
   }
 
-  // Restore original environment
-  if (originalEnv !== undefined) {
-    process.env.DATABASE_PATH = originalEnv
+  // Restore original environment (unused in test run but kept for completeness)
+  if (_originalEnv !== undefined) {
+    process.env.DATABASE_PATH = _originalEnv
   } else {
     delete process.env.DATABASE_PATH
   }

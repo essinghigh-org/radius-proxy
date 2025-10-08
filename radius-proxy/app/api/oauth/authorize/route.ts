@@ -5,7 +5,6 @@ import { config } from "@/lib/config"
 import { isClassPermitted } from "@/lib/access"
 import crypto from "crypto"
 import { warn, error, info } from "@/lib/log"
-import { addUserToTeamByEmail } from '@/lib/grafana'
 import { getStorage, cleanupExpiredCodes } from '@/lib/storage'
 
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code

@@ -1,6 +1,31 @@
 import { config } from './config'
 import { warn, error, info } from './log'
 
+// Types describing Grafana REST API shapes we touch in this helper.
+interface GrafanaOrgUserLookupItem {
+  id?: number
+  userId?: number
+  user_id?: number
+  uid?: string
+  login?: string
+  email?: string
+}
+
+interface GrafanaTeamMemberItem {
+  id?: number
+  userId?: number
+  user_id?: number
+}
+
+// Augment global for module-level caches (avoid re-adding properties repeatedly)
+// We purposefully keep these small and ephemeral (TTL + cleanup) so no memory leak risk.
+interface GrafanaGlobalCache {
+  __grafana_inflight?: Map<string, Promise<boolean>>
+  __grafana_done?: Map<string, number>
+}
+
+declare const global: typeof globalThis & GrafanaGlobalCache
+
 // Add a user to a Grafana team using a service account token.
 // Uses teamId and user email. If the user isn't present in the org yet,
 // the helper polls the org lookup endpoint a few times to wait for the
@@ -9,10 +34,10 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
   const key = `${teamId}:${email}`
 
   // initialize module-level caches lazily
-  if (!(global as any).__grafana_inflight) (global as any).__grafana_inflight = new Map<string, Promise<boolean>>()
-  if (!(global as any).__grafana_done) (global as any).__grafana_done = new Map<string, number>()
-  const inflight: Map<string, Promise<boolean>> = (global as any).__grafana_inflight
-  const done: Map<string, number> = (global as any).__grafana_done
+  if (!global.__grafana_inflight) global.__grafana_inflight = new Map<string, Promise<boolean>>()
+  if (!global.__grafana_done) global.__grafana_done = new Map<string, number>()
+  const inflight = global.__grafana_inflight
+  const done = global.__grafana_done
 
   const DONE_TTL = 60 * 1000 // 60s cache for completed adds
   const prev = done.get(key)
@@ -26,13 +51,13 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
 
   const promise = (async (): Promise<boolean> => {
     try {
-      const token = (config as any).GRAFANA_SA_TOKEN
+  const token = config.GRAFANA_SA_TOKEN
       if (!token) {
         warn('[grafana] no service account token configured; skipping team assignment')
         return false
       }
 
-      const grafanaBase = (config as any).GRAFANA_BASE_URL || ''
+  const grafanaBase = config.GRAFANA_BASE_URL || ''
       const lookupUrl = grafanaBase
         ? `${grafanaBase}/api/org/users/lookup?loginOrEmail=${encodeURIComponent(email)}`
         : `/api/org/users/lookup?loginOrEmail=${encodeURIComponent(email)}`
@@ -52,22 +77,29 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
         return false
       }
 
-      let parsed: any = null
-      try { parsed = JSON.parse(lookupText) } catch { warn('[grafana] org lookup returned non-json body', { email, body: lookupText }); return false }
+  let parsed: unknown = null
+  try { parsed = JSON.parse(lookupText) } catch { warn('[grafana] org lookup returned non-json body', { email, body: lookupText }); return false }
 
-      const findUserInArray = (arr: any[]): number | null => {
-        let found: any = null
-        if (username) found = arr.find((p: any) => (p.login && p.login.toLowerCase() === username.toLowerCase()) || (p.uid && p.uid.toLowerCase() === username.toLowerCase()))
-        if (!found) found = arr.find((p: any) => (p.email && p.email.toLowerCase() === email.toLowerCase()) || (p.login && p.login.toLowerCase() === email.toLowerCase()))
+      const findUserInArray = (arr: GrafanaOrgUserLookupItem[]): number | null => {
+        let found: GrafanaOrgUserLookupItem | undefined
+        if (username) {
+          const uname = username.toLowerCase()
+          found = arr.find(p => (p.login && p.login.toLowerCase() === uname) || (p.uid && p.uid.toLowerCase() === uname))
+        }
+        if (!found) {
+          const emLower = email.toLowerCase()
+            ; (found = arr.find(p => (p.email && p.email.toLowerCase() === emLower) || (p.login && p.login.toLowerCase() === emLower)))
+        }
         if (found) return Number(found.userId || found.id || found.user_id || found.uid) || null
         return null
       }
 
       let userId: number | null = null
       if (Array.isArray(parsed) && parsed.length > 0) {
-        userId = findUserInArray(parsed)
+        userId = findUserInArray(parsed as GrafanaOrgUserLookupItem[])
       } else if (parsed && typeof parsed === 'object') {
-        userId = Number(parsed.userId || parsed.id || parsed.user_id || parsed.uid) || null
+        const obj = parsed as GrafanaOrgUserLookupItem
+        userId = Number(obj.userId || obj.id || obj.user_id || obj.uid) || null
       }
 
       // If user not found, poll a few times with exponential backoff
@@ -93,9 +125,10 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
           try {
             const parsed2 = JSON.parse(retryText)
             if (Array.isArray(parsed2) && parsed2.length > 0) {
-              userId = findUserInArray(parsed2)
+              userId = findUserInArray(parsed2 as GrafanaOrgUserLookupItem[])
             } else if (parsed2 && typeof parsed2 === 'object') {
-              userId = Number(parsed2.userId || parsed2.id || parsed2.user_id || parsed2.uid) || null
+              const obj2 = parsed2 as GrafanaOrgUserLookupItem
+              userId = Number(obj2.userId || obj2.id || obj2.user_id || obj2.uid) || null
             }
           } catch {}
         }
@@ -109,8 +142,8 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
         const membersText = await membersRes.text().catch(() => '<no body>')
         if (membersRes.ok) {
           try {
-            const members = JSON.parse(membersText)
-            if (Array.isArray(members) && members.find((m: any) => Number(m.userId || m.id || m.user_id) === Number(userId))) {
+            const members: unknown = JSON.parse(membersText)
+            if (Array.isArray(members) && members.find((m: GrafanaTeamMemberItem) => Number(m.userId || m.id || m.user_id) === Number(userId))) {
               info('[grafana] user already a member of team; skipping add', { teamId, userId, email })
               done.set(key, Date.now())
               setTimeout(() => { try { done.delete(key) } catch {} }, DONE_TTL)
@@ -152,4 +185,5 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
   return promise
 }
 
-export default { addUserToTeamByEmail }
+const grafanaHelpers = { addUserToTeamByEmail }
+export default grafanaHelpers

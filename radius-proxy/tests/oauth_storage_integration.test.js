@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // OAuth integration test with storage backends
 // Tests the full authorize -> token flow with both memory and SQLite storage
@@ -141,7 +142,7 @@ test('OAuth flow with SQLite storage', async () => {
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath)
     }
-  } catch (e) {
+  } catch {
     // Ignore cleanup errors
   }
 })
@@ -298,7 +299,7 @@ test('Storage backend consistency between memory and SQLite', async () => {
     if (fs.existsSync(testDbPath)) {
       fs.unlinkSync(testDbPath)
     }
-  } catch (e) {
+  } catch {
     // Ignore cleanup errors
   }
 })

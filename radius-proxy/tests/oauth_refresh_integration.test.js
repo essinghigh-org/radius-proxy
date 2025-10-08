@@ -1,9 +1,10 @@
 // Integration test for OAuth refresh token flow
+/* eslint-disable @typescript-eslint/no-require-imports */
 
-const request = require('supertest')
+// supertest not needed in current mocked flow
 const { getStorage } = require('../lib/storage')
 const crypto = require('crypto')
-const { signToken, verifyToken } = require('../lib/jwt')
+const { verifyToken } = require('../lib/jwt')
 
 // Mock the radius authentication
 jest.mock('../lib/radius', () => ({

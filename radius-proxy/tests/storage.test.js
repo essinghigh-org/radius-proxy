@@ -11,21 +11,7 @@ const mockConfig = {
   DATABASE_PATH: undefined, // Will be set per test
 }
 
-// Mock the config module
-const mockConfigModule = {
-  config: new Proxy(mockConfig, {
-    get(target, prop) {
-      return target[prop]
-    }
-  })
-}
-
-// Mock logger
-const mockLogger = {
-  info: () => {},
-  warn: () => {},
-  error: () => {}
-}
+// (Removed unused mockConfigModule and mockLogger to satisfy lint)
 
 // Dynamic imports to allow mocking
 async function createStorageTest() {
@@ -294,7 +280,7 @@ async function createStorageTest() {
     if (fs.existsSync(testDir)) {
       fs.rmdirSync(testDir)
     }
-  } catch (e) {
+  } catch {
     // Ignore cleanup errors
   }
 

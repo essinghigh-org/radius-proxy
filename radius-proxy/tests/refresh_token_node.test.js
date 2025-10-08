@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // Simple test for refresh token functionality using Node.js instead of Bun to avoid SQLite compatibility issues
 

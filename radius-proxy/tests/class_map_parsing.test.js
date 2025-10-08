@@ -17,8 +17,8 @@ function extractClassMapRaw(toml) {
 		let val = line.slice(eq+1).trim()
 		if ((val.startsWith('{') && !val.endsWith('}')) || (val.startsWith('[') && !val.endsWith(']'))) {
 			// accumulate until closing bracket
-			const open = val[0]
-			const close = open === '{' ? '}' : ']'
+			// note: delimiter tracking not needed for current simple depth logic
+			// determine matching closing delimiter implicitly via depth counting
 			let acc = val
 			let depth = (acc.match(/[\[{]/g) || []).length - (acc.match(/[\]}]/g) || []).length
 			while (depth > 0 && i + 1 < lines.length) {

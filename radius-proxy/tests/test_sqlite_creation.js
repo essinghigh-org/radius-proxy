@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // Test script to verify the SQLite database is created and working
 // This simulates what happens when the OAuth endpoints are accessed

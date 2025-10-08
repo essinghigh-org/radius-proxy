@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // Test refresh token functionality
 // Simpler version that works with the current CommonJS setup
@@ -8,7 +9,7 @@ const path = require('path')
 const crypto = require('crypto')
 
 // Mock config before requiring storage
-const originalEnv = process.env.DATABASE_PATH
+// original DATABASE_PATH not needed; using memory storage
 const testDir = path.join(__dirname, '..', 'test-data')
 const testDbPath = path.join(testDir, `test-refresh-${Date.now()}.db`)
 

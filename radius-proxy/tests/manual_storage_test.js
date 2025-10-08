@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 // Simple manual test for storage functionality
 // This test directly exercises the storage module to verify it works
@@ -21,21 +22,14 @@ async function testMemoryStorage() {
   
   try {
     // This should use the transpiled JS when run in Next.js context
-    const testCode = 'memory-test-' + Date.now()
-    const testEntry = {
-      username: 'testuser',
-      class: 'admin',
-      scope: 'openid profile',
-      groups: ['admin', 'users'],
-      expiresAt: Date.now() + 300000
-    }
+    // (memory storage test placeholders removed to satisfy lint)
 
     console.log('  ✓ Memory storage would store and retrieve OAuth codes')
     console.log('  ✓ Memory storage would handle expiration cleanup')
     console.log('  ✓ Memory storage implementation is ready')
     
-  } catch (err) {
-    console.log('  ✗ Memory storage test failed:', err.message)
+  } catch (_err) {
+    console.log('  ✗ Memory storage test failed:', _err && _err.message ? _err.message : String(_err))
   }
 }
 
@@ -71,15 +65,15 @@ async function testSQLiteStorage() {
       if (fs.existsSync(testDir) && fs.readdirSync(testDir).length === 0) {
         fs.rmdirSync(testDir)
       }
-    } catch (e) {
+    } catch {
       // Ignore cleanup errors
     }
     
   } catch (err) {
-    if (err.code === 'MODULE_NOT_FOUND') {
+    if (err && err.code === 'MODULE_NOT_FOUND') {
       console.log('  ! better-sqlite3 not found - will fallback to memory storage')
     } else {
-      console.log('  ! SQLite test issue:', err.message, '- will fallback to memory storage')
+      console.log('  ! SQLite test issue:', err && err.message ? err.message : String(err), '- will fallback to memory storage')
     }
   }
 }
