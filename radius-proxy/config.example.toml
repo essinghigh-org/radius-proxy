@@ -26,3 +26,7 @@ CLASS_MAP = {
     example_class = [2,6],
     another_example_class = [2,9,23]
 }
+
+# Optional SQLite database path for persistent storage
+# If unset, uses in-memory storage (not suitable for multiple instances)
+# DATABASE_PATH = "/var/lib/radius-proxy/data.db"

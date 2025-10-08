@@ -3,12 +3,7 @@ import { signToken } from "@/lib/jwt"
 import { config } from "@/lib/config"
 import { getIssuer } from "@/lib/server-utils"
 import { addUserToTeamByEmail } from '@/lib/grafana'
-
-declare global {
-  // pointer for simple in-memory code store (same shape as used by authorize)
-  // Each entry may include an optional expiresAt timestamp (ms since epoch).
-  var _oauth_codes: Record<string, { username: string; class?: string; scope?: string; groups?: string[]; expiresAt?: number }>
-}
+import { getStorage } from '@/lib/storage'
 
 export async function POST(req: Request) {
   const body = await req.formData()
@@ -40,15 +35,17 @@ export async function POST(req: Request) {
 
   if (grant_type === "authorization_code") {
     const code = String(body.get("code") || "")
-    // Ensure the global code store exists and we operate on the same object across modules
-  ;(global as any)._oauth_codes = (global as any)._oauth_codes || {}
-  const codes = (global as any)._oauth_codes
-  const entry = codes[code]
+    
+    // Use storage abstraction layer
+    const storage = getStorage()
+    const entry = await storage.get(code)
+    
     if (!entry) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
+    
     // Reject expired authorization codes to prevent reuse.
     if (entry.expiresAt && Date.now() > entry.expiresAt) {
-  // Remove expired code and fail with invalid_grant per spec.
-    delete (codes as any)[code]
+      // Remove expired code and fail with invalid_grant per spec.
+      await storage.delete(code)
       return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
     }
 
@@ -65,12 +62,12 @@ export async function POST(req: Request) {
     const accessToken = signToken({ ...baseClaims, scope, iss: issuer, aud }, { expiresIn: "1h" })
     const idToken = signToken({ ...baseClaims, iss: issuer, aud, iat: now }, { expiresIn: "1h" })
 
-  // once exchanged, remove code (demo store): delete the entry so lookups fail and cleanup removes expired entries
-  try {
-    delete (codes as any)[code]
-  } catch {
-    // ignore any deletion errors in this demo env
-  }
+    // Once exchanged, remove code (one-time use)
+    try {
+      await storage.delete(code)
+    } catch {
+      // ignore any deletion errors in this demo env
+    }
 
     // After successful token issuance, attempt to add user to any teams mapped from their groups.
     // This is non-blocking and best-effort; failures are logged but do not affect token issuance.

@@ -24,6 +24,9 @@ type Config = {
   OAUTH_CODE_TTL: number
   // RADIUS request timeout in seconds (how long to wait for RADIUS server reply)
   RADIUS_TIMEOUT: number
+  // Optional path to SQLite database for persistent storage
+  // If unset, uses in-memory storage
+  DATABASE_PATH?: string
 }
 
 function parseTomlSimple(content: string): Record<string, string> {
@@ -110,6 +113,7 @@ function loadConfig(): Config {
     })(),
     OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 300),
     RADIUS_TIMEOUT: Number(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"] || 5),
+    DATABASE_PATH: process.env.DATABASE_PATH || base["DATABASE_PATH"] || undefined,
     CLASS_MAP: (() => {
       // Accept several simple formats in config.toml for backwards compat:
       // 1) Inline TOML table-like string: CLASS_MAP = { editor_group = [2,3], admin_group = [5] }

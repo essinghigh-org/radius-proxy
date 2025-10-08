@@ -6,14 +6,9 @@ import { isClassPermitted } from "@/lib/access"
 import crypto from "crypto"
 import { warn, error, info } from "@/lib/log"
 import { addUserToTeamByEmail } from '@/lib/grafana'
+import { getStorage, cleanupExpiredCodes } from '@/lib/storage'
 
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code
-
-declare global {
-  // pointer for simple in-memory code store for demo only
-  // Each entry may include an optional expiresAt timestamp (ms since epoch).
-  var _oauth_codes: Record<string, { username: string; class?: string; scope?: string; groups?: string[]; expiresAt?: number }>
-}
 
 // GET /api/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&state=...
 // Grafana will hit this. We redirect user to /login (UI) preserving params so the form can POST back.
@@ -107,20 +102,14 @@ export async function POST(req: Request) {
   const code = crypto.randomBytes(24).toString("base64url")
   const expiresAt = Date.now() + (Number(config.OAUTH_CODE_TTL || 300) * 1000)
   
-  // For this demo, we'll store the mapping in a very naive global (suitable for single-process dev only)
-  ;(global as any)._oauth_codes = (global as any)._oauth_codes || {}
-  // Remove any expired codes to avoid unbounded memory growth in long-running processes.
-  try {
-    for (const k of Object.keys((global as any)._oauth_codes)) {
-      const e = (global as any)._oauth_codes[k]
-      if (e && typeof e.expiresAt === 'number' && Date.now() > e.expiresAt) {
-        delete (global as any)._oauth_codes[k]
-      }
-    }
-  } catch {
-    // Defensive: don't let cleanup failures affect normal flow
-    warn('[authorize] oauth code cleanup failed')
-  }
+  // Use the storage abstraction layer
+  const storage = getStorage()
+  
+  // Clean up expired codes periodically (non-blocking)
+  cleanupExpiredCodes().catch(err => {
+    warn('[authorize] Failed to cleanup expired codes', { error: err.message })
+  })
+
   // Derive groups from RADIUS Class attribute.
   // Strategy: if class contains semicolons or commas, split; otherwise single value.
   function deriveGroups(classAttr?: string): string[] {
@@ -129,8 +118,20 @@ export async function POST(req: Request) {
     return classAttr.split(/[;,]/).map(p=>p.trim()).filter(Boolean)
   }
   const groups = deriveGroups(res.class);
-  ;const codes = (global as any)._oauth_codes;
-  Reflect.set(codes, code, { username: username, ['class']: res.class, scope: scope, groups: groups, expiresAt: expiresAt });
+  
+  try {
+    await storage.set(code, { 
+      username: username, 
+      class: res.class, 
+      scope: scope, 
+      groups: groups, 
+      expiresAt: expiresAt 
+    })
+  } catch (err) {
+    error('[authorize] Failed to store OAuth code', { error: (err as Error).message })
+    if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
+    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'Storage failure'), { status: 302 })
+  }
 
   // Attempt to add the user to any Grafana teams mapped from their groups/classes.
   // This operation should not block or fail the authentication flow; log failures.
