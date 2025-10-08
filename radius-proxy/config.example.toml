@@ -1,8 +1,14 @@
 # radius-proxy configuration
 
+# Database Configuration
+DATABASE_PATH = "./data/oauth-codes.db"
+
 # OAuth client credentials
 OAUTH_CLIENT_ID = "grafana"
 OAUTH_CLIENT_SECRET = "secret"
+OAUTH_CODE_TTL = 600
+OAUTH_REFRESH_TOKEN_TTL = 7776000
+REDIRECT_URIS = ["https://grafana.example.com/login/generic_oauth"]
 
 # RADIUS server
 RADIUS_HOST = "192.168.0.191"
@@ -26,7 +32,3 @@ CLASS_MAP = {
     example_class = [2,6],
     another_example_class = [2,9,23]
 }
-
-# Optional SQLite database path for persistent storage
-# If unset, uses in-memory storage (not suitable for multiple instances)
-# DATABASE_PATH = "/var/lib/radius-proxy/data.db"

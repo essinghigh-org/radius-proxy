@@ -22,6 +22,8 @@ type Config = {
   CLASS_MAP: Record<string, number[]>
   // OAuth authorization code time-to-live (seconds)
   OAUTH_CODE_TTL: number
+  // OAuth refresh token time-to-live (seconds)
+  OAUTH_REFRESH_TOKEN_TTL: number
   // RADIUS request timeout in seconds (how long to wait for RADIUS server reply)
   RADIUS_TIMEOUT: number
   // Optional path to SQLite database for persistent storage
@@ -111,7 +113,8 @@ function loadConfig(): Config {
         .map(s => s.trim().replace(/^"|"$/g, "")) // strip surrounding quotes if present
         .filter(Boolean)
     })(),
-    OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 300),
+    OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 600),
+    OAUTH_REFRESH_TOKEN_TTL: Number(process.env.OAUTH_REFRESH_TOKEN_TTL || base["OAUTH_REFRESH_TOKEN_TTL"] || 7776000), // 90 days default
     RADIUS_TIMEOUT: Number(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"] || 5),
     DATABASE_PATH: process.env.DATABASE_PATH || base["DATABASE_PATH"] || undefined,
     CLASS_MAP: (() => {
