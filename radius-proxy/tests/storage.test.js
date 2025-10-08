@@ -229,7 +229,6 @@ async function createStorageTest() {
     const testEntry = {
       username: 'fallback-user'
     }
-    // no DATABASE_PATH in tests
 
     await storage.set('fallback-code', testEntry)
     const retrieved = await storage.get('fallback-code')
