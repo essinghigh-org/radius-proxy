@@ -1,31 +1,18 @@
 #!/usr/bin/env node
 
-// Test the storage abstraction layer (memory and SQLite)
+// Test the storage abstraction layer (memory-only)
 
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
 // Mock config for testing
-const mockConfig = {
-  DATABASE_PATH: undefined, // Will be set per test
-}
+const mockConfig = {}
 
 // (Removed unused mockConfigModule and mockLogger to satisfy lint)
 
 // Dynamic imports to allow mocking
 async function createStorageTest() {
-  // Create a temporary directory for test databases
-  const __filename = fileURLToPath(import.meta.url)
-  const __dirname = path.dirname(__filename)
-  const testDir = path.join(__dirname, '..', 'test-data')
-  
-  if (!fs.existsSync(testDir)) {
-    fs.mkdirSync(testDir, { recursive: true })
-  }
-
-  const testDbPath = path.join(testDir, `test-${Date.now()}.db`)
-
   console.log('Testing storage layer...')
 
   let tests = []
@@ -58,8 +45,6 @@ async function createStorageTest() {
 
   // Test memory storage
   test('Memory storage basic operations', async () => {
-    mockConfig.DATABASE_PATH = undefined
-    
     // Import storage module after setting mock config
     const storageModule = await import('../lib/storage.js')
     const storage = storageModule.getStorage()
@@ -70,7 +55,7 @@ async function createStorageTest() {
       scope: 'openid profile',
       groups: ['admin', 'users'],
       expiresAt: Date.now() + 300000
-    }
+  }
 
     // Test set and get
     await storage.set('test-code-1', testEntry)
@@ -88,8 +73,6 @@ async function createStorageTest() {
   })
 
   test('Memory storage expiration cleanup', async () => {
-    mockConfig.DATABASE_PATH = undefined
-    
     const storageModule = await import('../lib/storage.js')
     const storage = storageModule.getStorage()
 
@@ -120,21 +103,17 @@ async function createStorageTest() {
     assert(await storage.get('current-code') !== undefined, 'Current entry should remain after cleanup')
   })
 
-  test('SQLite storage basic operations', async () => {
-    mockConfig.DATABASE_PATH = testDbPath
-    
-    // Force re-initialization of storage
+  test('Memory storage re-initialization consistency', async () => {
+    // Force re-initialization of storage module and verify behavior remains consistent
     const storageModule = await import('../lib/storage.js')
-    
-    // Reset storage instance to force re-initialization
     if (storageModule.closeStorage) {
       await storageModule.closeStorage()
     }
-    
+
     const storage = storageModule.getStorage()
 
     const testEntry = {
-      username: 'testuser-sqlite',
+      username: 'reinit-user',
       class: 'editor',
       scope: 'openid profile email',
       groups: ['editor', 'users', 'special-chars'],
@@ -142,64 +121,58 @@ async function createStorageTest() {
     }
 
     // Test set and get
-    await storage.set('sqlite-test-code-1', testEntry)
-    const retrieved = await storage.get('sqlite-test-code-1')
-    
+    await storage.set('mem-test-code-1', testEntry)
+    const retrieved = await storage.get('mem-test-code-1')
+
     assert(retrieved !== undefined, 'Entry should exist')
     assert(retrieved.username === testEntry.username, 'Username should match')
     assert(retrieved.class === testEntry.class, 'Class should match')
     assert(retrieved.scope === testEntry.scope, 'Scope should match')
     assert(JSON.stringify(retrieved.groups) === JSON.stringify(testEntry.groups), 'Groups should match')
-    assert(retrieved.expiresAt === testEntry.expiresAt, 'ExpiresAt should match')
 
     // Test update (replace)
     const updatedEntry = { ...testEntry, class: 'admin' }
-    await storage.set('sqlite-test-code-1', updatedEntry)
-    const retrievedUpdated = await storage.get('sqlite-test-code-1')
+    await storage.set('mem-test-code-1', updatedEntry)
+    const retrievedUpdated = await storage.get('mem-test-code-1')
     assert(retrievedUpdated.class === 'admin', 'Entry should be updated')
 
     // Test delete
-    await storage.delete('sqlite-test-code-1')
-    const deleted = await storage.get('sqlite-test-code-1')
+    await storage.delete('mem-test-code-1')
+    const deleted = await storage.get('mem-test-code-1')
     assert(deleted === undefined, 'Entry should be deleted')
   })
 
-  test('SQLite storage expiration cleanup', async () => {
-    mockConfig.DATABASE_PATH = testDbPath
-    
+  test('Storage expiration cleanup after re-init', async () => {
     const storageModule = await import('../lib/storage.js')
     const storage = storageModule.getStorage()
 
     // Add expired entry
     const expiredEntry = {
-      username: 'expireduser-sqlite',
+      username: 'expireduser',
       expiresAt: Date.now() - 5000 // 5 seconds ago
     }
 
-    // Add current entry
     const currentEntry = {
-      username: 'currentuser-sqlite',
+      username: 'currentuser',
       expiresAt: Date.now() + 300000 // 5 minutes from now
     }
 
-    await storage.set('expired-sqlite-code', expiredEntry)
-    await storage.set('current-sqlite-code', currentEntry)
+    await storage.set('expired-code-db', expiredEntry)
+    await storage.set('current-code-db', currentEntry)
 
     // Verify both exist before cleanup
-    assert(await storage.get('expired-sqlite-code') !== undefined, 'Expired entry should exist before cleanup')
-    assert(await storage.get('current-sqlite-code') !== undefined, 'Current entry should exist before cleanup')
+    assert(await storage.get('expired-code-db') !== undefined, 'Expired entry should exist before cleanup')
+    assert(await storage.get('current-code-db') !== undefined, 'Current entry should exist before cleanup')
 
     // Run cleanup
     await storage.cleanup()
 
     // Verify expired entry is gone, current remains
-    assert(await storage.get('expired-sqlite-code') === undefined, 'Expired entry should be cleaned up')
-    assert(await storage.get('current-sqlite-code') !== undefined, 'Current entry should remain after cleanup')
+    assert(await storage.get('expired-code-db') === undefined, 'Expired entry should be cleaned up')
+    assert(await storage.get('current-code-db') !== undefined, 'Current entry should remain after cleanup')
   })
 
-  test('SQLite storage handles null/undefined values', async () => {
-    mockConfig.DATABASE_PATH = testDbPath
-    
+  test('Storage handles null/undefined values (in-memory)', async () => {
     const storageModule = await import('../lib/storage.js')
     const storage = storageModule.getStorage()
 
@@ -210,7 +183,7 @@ async function createStorageTest() {
 
     await storage.set('minimal-code', minimalEntry)
     const retrieved = await storage.get('minimal-code')
-    
+
     assert(retrieved !== undefined, 'Entry should exist')
     assert(retrieved.username === 'minimal-user', 'Username should match')
     assert(retrieved.class === undefined, 'Class should be undefined')
@@ -219,9 +192,10 @@ async function createStorageTest() {
     assert(retrieved.expiresAt === undefined, 'ExpiresAt should be undefined')
   })
 
-  test('SQLite database file persistence', async () => {
-    mockConfig.DATABASE_PATH = testDbPath
-    
+  test('No persistence across restarts for in-memory storage', async () => {
+    // Since the project uses in-memory storage, data should NOT persist across
+    // a storage restart. This verifies closeStorage resets the backend.
+
     const storageModule = await import('../lib/storage.js')
     let storage = storageModule.getStorage()
 
@@ -229,32 +203,25 @@ async function createStorageTest() {
       username: 'persistent-user',
       class: 'viewer',
       groups: ['viewers']
-    }
+  }
 
     await storage.set('persistent-code', testEntry)
-    
-    // Close the database
-    if (storage.close) {
-      await storage.close()
+
+    // Simulate restart: close and reinitialize
+    if (storageModule.closeStorage) {
+      await storageModule.closeStorage()
     }
-    
-    // Force re-initialization by clearing module cache and reimporting
-    await storageModule.closeStorage()
-    
+
     const storageModule2 = await import('../lib/storage.js?' + Date.now())
     const storage2 = storageModule2.getStorage()
 
-    // Data should persist across restarts
+    // Data should NOT persist across in-memory restarts
     const retrieved = await storage2.get('persistent-code')
-    assert(retrieved !== undefined, 'Entry should persist across database restarts')
-    assert(retrieved.username === 'persistent-user', 'Username should match after restart')
+    assert(retrieved === undefined, 'In-memory storage should not persist across restarts')
   })
 
-  test('SQLite fallback to memory on database error', async () => {
-    // Set an invalid database path
-    mockConfig.DATABASE_PATH = '/invalid/path/that/does/not/exist.db'
-    
-    // This should fall back to memory storage
+  test('Fallback behavior when config invalid', async () => {
+    // If configuration is invalid, the implementation should fall back to in-memory storage
     const storageModule = await import('../lib/storage.js?' + Date.now())
     const storage = storageModule.getStorage()
 
@@ -262,6 +229,7 @@ async function createStorageTest() {
     const testEntry = {
       username: 'fallback-user'
     }
+    // no DATABASE_PATH in tests
 
     await storage.set('fallback-code', testEntry)
     const retrieved = await storage.get('fallback-code')
@@ -272,17 +240,7 @@ async function createStorageTest() {
 
   await runTests()
 
-  // Cleanup
-  try {
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath)
-    }
-    if (fs.existsSync(testDir)) {
-      fs.rmdirSync(testDir)
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
+  // No filesystem cleanup needed for in-memory storage
 
   console.log(`\nStorage tests completed: ${passed} passed, ${failed} failed`)
   

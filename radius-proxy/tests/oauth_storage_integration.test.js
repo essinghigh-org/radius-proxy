@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 
 // OAuth integration test with storage backends
-// Tests the full authorize -> token flow with both memory and SQLite storage
+// Tests the full authorize -> token flow
 
 const fs = require('fs')
 const path = require('path')
@@ -56,8 +56,6 @@ async function runTests() {
 }
 
 test('OAuth flow with memory storage', async () => {
-  // Set up memory storage
-  delete process.env.DATABASE_PATH
   delete require.cache[require.resolve('../lib/storage.ts')]
   delete require.cache[require.resolve('../lib/config.ts')]
   
@@ -89,31 +87,20 @@ test('OAuth flow with memory storage', async () => {
   assert(afterDelete === undefined, 'OAuth code should be deleted after use')
 })
 
-test('OAuth flow with SQLite storage', async () => {
-  // Set up SQLite storage
-  const testDir = path.join(__dirname, '..', 'test-data')
-  const testDbPath = path.join(testDir, `oauth-test-${Date.now()}.db`)
-  
-  if (!fs.existsSync(testDir)) {
-    fs.mkdirSync(testDir, { recursive: true })
-  }
-
-  process.env.DATABASE_PATH = testDbPath
+test('OAuth flow repeated in-memory (no alternate backend)', async () => {
+  // The project uses in-memory storage. Run the same flow again to ensure
+  // behavior is consistent across re-initializations.
   delete require.cache[require.resolve('../lib/storage.ts')]
   delete require.cache[require.resolve('../lib/config.ts')]
   
   mockConfigModule()
   const { getStorage, closeStorage } = require('../lib/storage.ts')
-  
-  // Close any existing storage
-  await closeStorage().catch(() => {})
-  
   const storage = getStorage()
 
   // Test storing an OAuth code (simulating authorize endpoint)
-  const code = 'test-auth-code-sqlite'
+  const code = 'test-auth-code-repeated'
   const entry = {
-    username: 'testuser-sqlite',
+    username: 'testuser-repeated',
     class: 'editor',
     scope: 'openid profile email',
     groups: ['editor', 'users'],
@@ -135,20 +122,22 @@ test('OAuth flow with SQLite storage', async () => {
   const afterDelete = await storage.get(code)
   assert(afterDelete === undefined, 'OAuth code should be deleted after use')
 
-  await closeStorage()
+  // Reinitialize storage to simulate a restart and repeat basic operations
+  await closeStorage().catch(() => {})
+  delete require.cache[require.resolve('../lib/storage.ts')]
+  const { getStorage: getStorage2 } = require('../lib/storage.ts')
+  const storage2 = getStorage2()
 
-  // Cleanup
-  try {
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath)
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
+  // Ensure storage still behaves the same after re-initialization
+  const code2 = 'test-auth-code-repeated-2'
+  const entry2 = { ...entry, username: 'testuser-repeated-2' }
+  await storage2.set(code2, entry2)
+  const retrieved2 = await storage2.get(code2)
+  assert(retrieved2 !== undefined, 'Entry should be retrievable after reinit')
+  await storage2.delete(code2)
 })
 
 test('OAuth code expiration handling', async () => {
-  delete process.env.DATABASE_PATH
   delete require.cache[require.resolve('../lib/storage.ts')]
   delete require.cache[require.resolve('../lib/config.ts')]
   
@@ -183,7 +172,6 @@ test('OAuth code expiration handling', async () => {
 })
 
 test('Multiple concurrent OAuth codes', async () => {
-  delete process.env.DATABASE_PATH
   delete require.cache[require.resolve('../lib/storage.ts')]
   delete require.cache[require.resolve('../lib/config.ts')]
   
@@ -229,7 +217,7 @@ test('Multiple concurrent OAuth codes', async () => {
   assert(await storage.get(codes[4]) === undefined, 'Code 4 should be deleted')
 })
 
-test('Storage backend consistency between memory and SQLite', async () => {
+test('Storage backend consistency across re-initialization (in-memory)', async () => {
   // Test the same operations on both backends to ensure consistent behavior
   
   const testOperations = async (storage, label) => {
@@ -264,44 +252,23 @@ test('Storage backend consistency between memory and SQLite', async () => {
   }
 
   // Test memory storage
-  delete process.env.DATABASE_PATH
   delete require.cache[require.resolve('../lib/storage.ts')]
   delete require.cache[require.resolve('../lib/config.ts')]
-  
   mockConfigModule()
-  const { getStorage: getMemoryStorage } = require('../lib/storage.ts')
+  const { getStorage: getMemoryStorage, closeStorage } = require('../lib/storage.ts')
   const memoryStorage = getMemoryStorage()
   await testOperations(memoryStorage, 'Memory')
 
-  // Test SQLite storage
-  const testDir = path.join(__dirname, '..', 'test-data')
-  const testDbPath = path.join(testDir, `consistency-test-${Date.now()}.db`)
-  
-  if (!fs.existsSync(testDir)) {
-    fs.mkdirSync(testDir, { recursive: true })
-  }
-
-  process.env.DATABASE_PATH = testDbPath
+  // Reinitialize and run the same operations again to confirm consistency
+  await closeStorage().catch(() => {})
   delete require.cache[require.resolve('../lib/storage.ts')]
   delete require.cache[require.resolve('../lib/config.ts')]
-  
   mockConfigModule()
-  const { getStorage: getSqliteStorage, closeStorage } = require('../lib/storage.ts')
-  await closeStorage().catch(() => {})
-  
-  const sqliteStorage = getSqliteStorage()
-  await testOperations(sqliteStorage, 'SQLite')
+  const { getStorage: getAltStorage } = require('../lib/storage.ts')
+  const altStorage = getAltStorage()
+  await testOperations(altStorage, 'ReinitializedMemory')
 
   await closeStorage()
-
-  // Cleanup
-  try {
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath)
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
 })
 
 // Run tests

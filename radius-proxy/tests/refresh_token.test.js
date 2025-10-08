@@ -8,15 +8,7 @@ const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
 
-// Mock config before requiring storage
-// original DATABASE_PATH not needed; using memory storage
-const testDir = path.join(__dirname, '..', 'test-data')
-const testDbPath = path.join(testDir, `test-refresh-${Date.now()}.db`)
-
-// Ensure test directory exists
-if (!fs.existsSync(testDir)) {
-  fs.mkdirSync(testDir, { recursive: true })
-}
+// Mock config before requiring storage (in-memory storage used for tests)
 
 console.log('Testing refresh token functionality...')
 
@@ -73,20 +65,12 @@ async function runTests() {
 
   console.log(`\nResults: ${passed} passed, ${failed} failed`)
   
-  // Cleanup
-  try {
-    if (fs.existsSync(testDbPath)) {
-      fs.unlinkSync(testDbPath)
-    }
-  } catch (err) {
-    console.warn('Cleanup warning:', err.message)
-  }
+  // No filesystem cleanup needed for in-memory storage
   
   process.exit(failed > 0 ? 1 : 0)
 }
 
-// Set up test environment - force memory storage to avoid SQLite compatibility issues
-delete process.env.DATABASE_PATH
+// Storage is in-memory by default for tests; no env toggling required
 
 // Import after setting up environment
 const { getStorage } = require('../lib/storage')
@@ -174,11 +158,7 @@ test('should cleanup expired refresh tokens', async () => {
 })
 
 test('should work with memory storage', async () => {
-  // Test with memory storage by unsetting DATABASE_PATH temporarily
-  const originalDbPath = process.env.DATABASE_PATH
-  delete process.env.DATABASE_PATH
-  
-  // This will create a new memory storage instance
+  // Storage is in-memory by default for tests; get a fresh instance
   const { getStorage: getMemoryStorage } = require('../lib/storage')
   const storage = getMemoryStorage()
   
@@ -196,8 +176,7 @@ test('should work with memory storage', async () => {
   const retrieved = await storage.getRefreshToken(token)
   expect(retrieved).toEqual(entry)
   
-  // Restore DATABASE_PATH
-  process.env.DATABASE_PATH = originalDbPath
+  // No env restore needed
 })
 
 // Run the tests
