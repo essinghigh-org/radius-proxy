@@ -5,6 +5,7 @@ import { config } from "@/lib/config"
 import { isClassPermitted } from "@/lib/access"
 import crypto from "crypto"
 import { warn, error, info } from "@/lib/log"
+import { addUserToTeamByEmail } from '@/lib/grafana'
 
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code
 
@@ -107,13 +108,13 @@ export async function POST(req: Request) {
   const expiresAt = Date.now() + (Number(config.OAUTH_CODE_TTL || 300) * 1000)
   
   // For this demo, we'll store the mapping in a very naive global (suitable for single-process dev only)
-  global._oauth_codes = global._oauth_codes || {}
+  ;(global as any)._oauth_codes = (global as any)._oauth_codes || {}
   // Remove any expired codes to avoid unbounded memory growth in long-running processes.
   try {
-    for (const k of Object.keys(global._oauth_codes)) {
-      const e = global._oauth_codes[k]
+    for (const k of Object.keys((global as any)._oauth_codes)) {
+      const e = (global as any)._oauth_codes[k]
       if (e && typeof e.expiresAt === 'number' && Date.now() > e.expiresAt) {
-        delete global._oauth_codes[k]
+        delete (global as any)._oauth_codes[k]
       }
     }
   } catch {
@@ -127,8 +128,13 @@ export async function POST(req: Request) {
     // Only pass through the raw RADIUS class tokens (split on ; or ,)
     return classAttr.split(/[;,]/).map(p=>p.trim()).filter(Boolean)
   }
-  const groups = deriveGroups(res.class)
-  global._oauth_codes[code] = { username, class: res.class, scope, groups, expiresAt }
+  const groups = deriveGroups(res.class);
+  ;const codes = (global as any)._oauth_codes;
+  Reflect.set(codes, code, { username: username, ['class']: res.class, scope: scope, groups: groups, expiresAt: expiresAt });
+
+  // Attempt to add the user to any Grafana teams mapped from their groups/classes.
+  // This operation should not block or fail the authentication flow; log failures.
+  // Team assignment moved to token exchange so it happens after the login flow completes
 
   if (redirect_uri && !accept) {
     try {

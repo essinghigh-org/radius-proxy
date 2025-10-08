@@ -18,3 +18,11 @@ ISSUER = "https://auth.example.com"
 EMAIL_SUFFIX = "example.com"
 PERMITTED_CLASSES = "admin_group,editor_group"
 ADMIN_CLASSES = "admin_group"
+
+# Team Mapping: map RADIUS class/group names to Grafana team IDs
+GRAFANA_BASE_URL = "https://grafana.example.com"
+GRAFANA_SA_TOKEN = "glsa_xyzabc123"
+CLASS_MAP = {
+    example_class = [2,6],
+    another_example_class = [2,9,23]
+}

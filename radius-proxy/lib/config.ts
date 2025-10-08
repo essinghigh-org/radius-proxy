@@ -10,12 +10,16 @@ type Config = {
   HTTP_HOST: string
   HTTP_PORT: number
   ISSUER?: string
+  GRAFANA_SA_TOKEN?: string
+  GRAFANA_BASE_URL?: string
   EMAIL_SUFFIX: string
   PERMITTED_CLASSES: string[]
   ADMIN_CLASSES: string[]
   // Optional explicit list of allowed redirect URIs for the OAuth client.
   // If empty, only same-origin redirects are allowed.
   REDIRECT_URIS: string[]
+  // Map of class/group name -> array of Grafana team IDs
+  CLASS_MAP: Record<string, number[]>
   // OAuth authorization code time-to-live (seconds)
   OAUTH_CODE_TTL: number
   // RADIUS request timeout in seconds (how long to wait for RADIUS server reply)
@@ -24,14 +28,31 @@ type Config = {
 
 function parseTomlSimple(content: string): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const rawLine of content.split(/\r?\n/)) {
+  const lines = content.split(/\r?\n/)
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i]
     const line = rawLine.trim()
     if (!line || line.startsWith("#")) continue
     const eq = line.indexOf("=")
     if (eq === -1) continue
     const key = line.slice(0, eq).trim()
     let val = line.slice(eq + 1).trim()
-    // strip quotes
+    // If the value starts a multi-line array or inline table, accumulate until matching bracket
+    if ((val.startsWith("[") && !val.endsWith("]")) || (val.startsWith("{") && !val.endsWith("}"))) {
+      const open = val[0]
+      const close = open === '[' ? ']' : '}'
+      let acc = val
+      // track depth of nested brackets in case of nested arrays
+      let depth = (acc.match(/[\[{]/g) || []).length - (acc.match(/[\]}]/g) || []).length
+      while (depth > 0 && i + 1 < lines.length) {
+        i++
+        const next = lines[i]
+        acc += '\n' + next
+        depth = (acc.match(/[\[{]/g) || []).length - (acc.match(/[\]}]/g) || []).length
+      }
+      val = acc.trim()
+    }
+    // strip quotes for simple quoted strings
     if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1)
     out[key] = val
   }
@@ -65,6 +86,8 @@ function loadConfig(): Config {
     HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
     HTTP_PORT: Number(process.env.HTTP_PORT || base["HTTP_PORT"] || 3000),
     ISSUER: process.env.ISSUER || base["ISSUER"],
+    GRAFANA_SA_TOKEN: process.env.GRAFANA_SA_TOKEN || base["GRAFANA_SA_TOKEN"],
+    GRAFANA_BASE_URL: process.env.GRAFANA_BASE_URL || base["GRAFANA_BASE_URL"],
     EMAIL_SUFFIX: process.env.EMAIL_SUFFIX || base["EMAIL_SUFFIX"] || "example.local",
     PERMITTED_CLASSES: (process.env.PERMITTED_CLASSES || base["PERMITTED_CLASSES"] || '')
       .split(',')
@@ -87,6 +110,71 @@ function loadConfig(): Config {
     })(),
     OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 300),
     RADIUS_TIMEOUT: Number(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"] || 5),
+    CLASS_MAP: (() => {
+      // Accept several simple formats in config.toml for backwards compat:
+      // 1) Inline TOML table-like string: CLASS_MAP = { editor_group = [2,3], admin_group = [5] }
+      // 2) Our previous array-ish lines: CLASS_MAP = [ "editor_group": 2,3, "admin_group": 5 ]
+      // 3) Environment variable as JSON
+      const raw = process.env.CLASS_MAP || base["CLASS_MAP"] || ''
+      const out: Record<string, number[]> = {}
+      const trimmed = raw.trim()
+      if (!trimmed) return out
+
+      // Try JSON parse first (allow JSON object string)
+      try {
+        const j = JSON.parse(trimmed)
+        if (typeof j === 'object' && j !== null) {
+          for (const k of Object.keys(j)) {
+            const v = j[k]
+            if (Array.isArray(v)) out[k] = v.map(n => Number(n)).filter(n => !Number.isNaN(n))
+            else if (typeof v === 'number') out[k] = [Number(v)]
+            else if (typeof v === 'string') out[k] = v.split(/[;,]/).map(s=>Number(s.trim())).filter(n=>!Number.isNaN(n))
+          }
+          return out
+        }
+      } catch {
+        // fall back to custom parsing
+      }
+
+      // Handle TOML inline table { a = [1,2], b = [3] }
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        const inner = trimmed.slice(1, -1)
+        // split on commas that follow a closing bracket or number/key; simple split then process
+        const parts = inner.split(/,(?=[^\]]*(?:\[|$))/g)
+        for (const p of parts) {
+          const eq = p.indexOf('=')
+          if (eq === -1) continue
+          const key = p.slice(0, eq).trim().replace(/^"|"$/g, '')
+          const val = p.slice(eq+1).trim()
+          let nums: number[] = []
+          if (val.startsWith('[') && val.endsWith(']')) {
+            const innerArr = val.slice(1, -1)
+            nums = innerArr.split(',').map(s=>Number(s.trim())).filter(n=>!Number.isNaN(n))
+          } else {
+            // single number
+            const n = Number(val.replace(/"/g, '').trim())
+            if (!Number.isNaN(n)) nums = [n]
+          }
+          if (key) out[key] = nums
+        }
+        return out
+      }
+
+      // Handle older array-like syntax: "key": 1,2,
+      // We'll split tokens by commas and parse quoted keys followed by colon and numbers
+      // Remove surrounding [ ] if present
+      const simple = (trimmed.startsWith('[') && trimmed.endsWith(']')) ? trimmed.slice(1, -1) : trimmed
+      // tokenization: find occurrences of "key": nums
+      const keyValRe = /"?([A-Za-z0-9_\-]+)"?\s*[:=]\s*([^,\n]+(?:,[^,\n]+)*)/g
+      let m: RegExpExecArray | null
+      while ((m = keyValRe.exec(simple)) !== null) {
+        const key = m[1]
+        const rest = m[2]
+        const nums = rest.split(',').map(s=>Number(s.trim())).filter(n=>!Number.isNaN(n))
+        if (key) out[key] = nums
+      }
+      return out
+    })(),
   }
   return cfg
 }
