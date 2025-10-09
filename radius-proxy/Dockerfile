@@ -26,10 +26,9 @@ RUN bun install --production
 # Copy build output and public assets from builder
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-## copy next config if present (handle .js/.mjs/.ts via shell to avoid COPY glob issues)
-RUN if [ -f /app/next.config.mjs ]; then cp /app/next.config.mjs /app/ ; fi || true
-RUN if [ -f /app/next.config.js ]; then cp /app/next.config.js /app/ ; fi || true
-RUN if [ -f /app/next.config.ts ]; then cp /app/next.config.ts /app/ ; fi || true
+
+# Copy next config files from builder (these are needed for proper runtime behavior)
+COPY --from=builder /app/next.config*.* ./
 
 EXPOSE 54567
 
