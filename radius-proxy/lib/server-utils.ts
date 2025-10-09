@@ -20,10 +20,43 @@ export function getIssuer(req: Request | string): string {
       // the standard Host header which should reflect the original request
       // host/port as seen by the proxy. This prevents leaking the internal
       // server port (e.g. 54567) when the external request omitted it.
-      const xfProto = headers.get('x-forwarded-proto')
-      const xfHost = headers.get('x-forwarded-host') || headers.get('host')
-      if (xfHost) url.host = xfHost.split(',')[0].trim()
-      if (xfProto) url.protocol = xfProto.split(',')[0].trim() + ':'
+      const xfProtoRaw = headers.get('x-forwarded-proto')
+      const xfHostRaw = headers.get('x-forwarded-host')
+      const xfPortRaw = headers.get('x-forwarded-port')
+      const hostHeader = headers.get('host')
+      const xfProto = xfProtoRaw ? xfProtoRaw.split(',')[0].trim() : ''
+      const xfHost = (xfHostRaw ? xfHostRaw.split(',')[0].trim() : '') || (hostHeader ? hostHeader.split(',')[0].trim() : '')
+
+      if (xfHost) {
+        url.host = xfHost // may include port
+      }
+      if (xfProto) {
+        url.protocol = xfProto + ':'
+      }
+
+      // If x-forwarded-port explicitly provided, prefer it over any port embedded in host
+      if (xfPortRaw) {
+        const xfPort = xfPortRaw.split(',')[0].trim()
+        if (/^\d+$/.test(xfPort)) url.port = xfPort
+      }
+
+      // Heuristics to drop internal dev / container ports that should not be visible externally.
+      // If the proxy tells us the original scheme (e.g. https) but the port is a known internal
+      // dev port (3000), configured HTTP_PORT, or one of our default internal ports (54567),
+      // strip it so callers receive a clean origin.
+      const internalPorts = new Set<string>(['3000', String(config.HTTP_PORT || ''), '54567'])
+      if (xfProto && url.port) {
+        const p = url.port
+        const isStandard = (xfProto === 'https' && p === '443') || (xfProto === 'http' && p === '80')
+        if (isStandard) {
+          url.port = ''
+        } else if (xfProto === 'https' && internalPorts.has(p)) {
+          // Only drop non-standard internal port if forwarded host *did not* explicitly include a different public port
+          // i.e., if x-forwarded-host itself contained a port we assume it is intentional.
+          const forwardedHostHasPort = /:\d+$/.test(xfHost || '')
+          if (!forwardedHostHasPort) url.port = ''
+        }
+      }
     }
     return url.origin
   } catch {

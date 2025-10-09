@@ -27,12 +27,17 @@ async function run() {
   process.env.RADIUS_HOST = host
   process.env.RADIUS_PORT = String(port)
   process.env.RADIUS_SECRET = 's' // secret the fake server expects (not validated by fake server)
+  // Ensure the class returned by fake RADIUS server is permitted so flow continues
+  process.env.PERMITTED_CLASSES = 'test_group'
 
   // Import the authorize route after env is set so config is derived correctly.
   const authModule = await import('../app/api/oauth/authorize/route.ts')
   const authorizePOST = authModule.POST
 
   // Perform the authorize POST (simulates the login form submission)
+  // Configure redirect URIs to allow our test callback explicitly
+  process.env.REDIRECT_URIS = 'http://localhost/callback'
+
   const form = new URLSearchParams({
     user: 'u',
     password: 'p',
