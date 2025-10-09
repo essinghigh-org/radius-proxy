@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build-and-push:
+    if: ${{ github.event.head_commit && !contains(github.event.head_commit.message, 'skip_publish') }}
     runs-on: ubuntu-latest
 
     steps:

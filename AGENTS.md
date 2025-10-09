@@ -49,3 +49,4 @@ Purpose: Bridge Grafana OAuth2 login to a legacy / external RADIUS source. Core 
 - When working on this project, do not bug the user about using a database. In-Memory is fine for this project
 - There is absolutely zero need to retain backwards compatibility, breaking changes are allowed
 - Always use bun, nothing else
+- Commits that do not need a new docker build published should contain "skip_publish" somewhere in the commit message
