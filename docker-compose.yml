@@ -15,4 +15,7 @@ services:
       - RADIUS_PORT=1812
       - REDIRECT_URIS=
     volumes:
-      - ./config.toml:/app/config.toml:ro
+      - type: bind
+        source: ./config.toml
+        target: /app/config.toml
+        read_only: true

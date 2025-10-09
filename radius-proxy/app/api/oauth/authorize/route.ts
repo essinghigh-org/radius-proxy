@@ -12,15 +12,21 @@ import { getStorage, cleanupExpiredCodes } from '@/lib/storage'
 // GET /api/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&state=...
 // Grafana will hit this. We redirect user to /login (UI) preserving params so the form can POST back.
 export async function GET(req: Request) {
+  // Derive a safe origin (respecting X-Forwarded-* or Host header) and parse
+  // the request URL relative to that origin. Using getIssuer() here ensures
+  // the same origin logic is applied for both GET and POST handlers.
   const url = new URL(req.url)
-  // Honor reverse proxy headers for proper external URL construction
-  const xfProto = req.headers.get('x-forwarded-proto')
-  const xfHost = req.headers.get('x-forwarded-host')
-  if (xfHost) {
-    url.host = xfHost
-  }
-  if (xfProto) {
-    url.protocol = xfProto + ':'
+  const origin = getIssuer(req)
+  // If getIssuer returned a valid origin, prefer it for URL origin so we do
+  // not leak internal server ports when the external request didn't include one.
+  if (origin) {
+    // Create a fresh URL for the incoming request but replace origin with
+    // the computed origin so subsequent URL.origin uses the external host.
+    const parsed = new URL(req.url)
+    const adjusted = new URL(parsed.pathname + parsed.search, origin)
+    // overwrite url variable used below
+    // eslint-disable-next-line prefer-const
+    ;(url as unknown as URL) = adjusted
   }
   const client_id = url.searchParams.get('client_id') || ''
   const redirect_uri = url.searchParams.get('redirect_uri') || ''

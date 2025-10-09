@@ -16,8 +16,12 @@ export function getIssuer(req: Request | string): string {
 
     const headers = (req as Request).headers
     if (headers && typeof headers.get === 'function') {
+      // Prefer X-Forwarded-Host when present (set by proxies). Fall back to
+      // the standard Host header which should reflect the original request
+      // host/port as seen by the proxy. This prevents leaking the internal
+      // server port (e.g. 54567) when the external request omitted it.
       const xfProto = headers.get('x-forwarded-proto')
-      const xfHost = headers.get('x-forwarded-host')
+      const xfHost = headers.get('x-forwarded-host') || headers.get('host')
       if (xfHost) url.host = xfHost.split(',')[0].trim()
       if (xfProto) url.protocol = xfProto.split(',')[0].trim() + ':'
     }
