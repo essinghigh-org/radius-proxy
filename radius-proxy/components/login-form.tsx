@@ -14,11 +14,14 @@ interface LoginFormProps extends React.ComponentProps<'div'> {
 }
 
 export function LoginForm({ className, clientId, redirectUri, state, error, errorDescription, ...props }: LoginFormProps) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+  const formAction = `${basePath}/api/oauth/authorize`;
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8" method="post" action="/radius_login/api/oauth/authorize">
+          <form className="p-6 md:p-8" method="post" action={formAction}>
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Welcome back</h1>
@@ -57,7 +60,7 @@ export function LoginForm({ className, clientId, redirectUri, state, error, erro
           <div className="bg-muted relative hidden md:block">
             <div className="absolute inset-0 p-8">
               <Image
-                src="/grafana-logo.svg"
+                src={`${basePath}/grafana-logo.svg`}
                 alt="Grafana Logo"
                 className="object-contain transform scale-50"
                 fill

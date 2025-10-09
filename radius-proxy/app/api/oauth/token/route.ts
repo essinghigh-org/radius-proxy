@@ -42,7 +42,8 @@ export async function POST(req: Request) {
     const storage = getStorage()
     const entry = await storage.get(code)
     
-    if (!entry) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
+    if (!entry || !entry.username) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
+
     
     // Reject expired authorization codes to prevent reuse.
     if (entry.expiresAt && Date.now() > entry.expiresAt) {
