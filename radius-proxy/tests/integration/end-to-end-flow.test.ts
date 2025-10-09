@@ -1,9 +1,9 @@
 // End-to-End Integration Flow Tests
 // Nyaa~ Testing the complete RADIUS auth -> OAuth -> JWT flow like a purr-fect choreographed dance! 😺💕
 
-import { POST as authorizePost } from '@/app/radius_login/api/oauth/authorize/route';
-import { POST as tokenPost } from '@/app/radius_login/api/oauth/token/route';
-import { GET as userinfoGet } from '@/app/radius_login/api/oauth/userinfo/route';
+import { POST as authorizePost } from '@/app/api/oauth/authorize/route';
+import { POST as tokenPost } from '@/app/api/oauth/token/route';
+import { GET as userinfoGet } from '@/app/api/oauth/userinfo/route';
 import { radiusAuthenticate } from '@/lib/radius';
 import { getStorage, cleanupExpiredCodes } from '@/lib/storage';
 import { verifyToken } from '@/lib/jwt';

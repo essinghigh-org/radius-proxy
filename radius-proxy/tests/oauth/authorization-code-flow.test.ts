@@ -1,8 +1,8 @@
 // OAuth2 RFC 6749 Authorization Code Flow Compliance Tests
 // Nyaa~ Testing that our OAuth2 implementation is purr-fectly compliant with RFC 6749! 😺💕
 
-import { POST as authorizePost, GET as authorizeGet } from '@/app/radius_login/api/oauth/authorize/route';
-import { POST as tokenPost } from '@/app/radius_login/api/oauth/token/route';
+import { POST as authorizePost, GET as authorizeGet } from '@/app/api/oauth/authorize/route';
+import { POST as tokenPost } from '@/app/api/oauth/token/route';
 import { radiusAuthenticate } from '@/lib/radius';
 import { getStorage, cleanupExpiredCodes } from '@/lib/storage';
 import { _invalidateConfigCache } from '@/lib/config';
