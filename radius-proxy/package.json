@@ -13,7 +13,16 @@
     "test:permitted": "bun ./tests/permitted_classes.test.js",
     "test:storage": "bun ./tests/storage_behavior.test.js",
     "test:oauth-storage": "bun ./tests/oauth_storage_integration.test.js",
-    "test:all": "bun run test:radius && bun run test:emails && bun run test:groups && bun run test:permitted && bun run test:storage && bun run test:oauth-storage",
+    "test:oauth": "bun ./tests/oauth_integration.test.js",
+    "test:pkce": "bun ./tests/pkce.test.js",
+    "test:radius-net": "bun ./tests/radius_net.test.js",
+    "test:radius-ts": "bun ./tests/radius_ts.test.js",
+    "test:refresh-token": "bun ./tests/refresh_token.test.js",
+    "test:server-utils": "bun ./tests/server_utils_proxy.test.js",
+    "test:authenticator": "bun ./tests/authenticator_behavior.test.js",
+    "test:class-map": "bun ./tests/class_map_parsing.test.js",
+    "test:oauth-refresh": "bun ./tests/oauth_refresh_integration.test.js",
+    "test:all": "bun run test:radius && bun run test:emails && bun run test:groups && bun run test:permitted && bun run test:storage && bun run test:oauth-storage && bun run test:oauth && bun run test:pkce && bun run test:radius-net && bun run test:radius-ts && bun run test:refresh-token && bun run test:server-utils && bun run test:authenticator && bun run test:class-map && bun run test:oauth-refresh",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

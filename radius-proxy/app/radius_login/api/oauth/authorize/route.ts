@@ -44,7 +44,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'unauthorized_client' }, { status: 401 })
   }
   // Redirect to the UI login page with the original query so form can submit credentials
-  const loginUrl = new URL('/login', url.origin)
+  const loginUrl = new URL('/radius_login', url.origin)
   loginUrl.searchParams.set('client_id', client_id)
   loginUrl.searchParams.set('redirect_uri', redirect_uri)
   if (state) loginUrl.searchParams.set('state', state)
@@ -191,7 +191,7 @@ function buildErrorRedirect(origin: string, redirect_uri: string, state: string,
   let baseOrigin = origin || `http://localhost:${fallbackPort}`
   // strip any trailing slash
   if (baseOrigin.endsWith('/')) baseOrigin = baseOrigin.slice(0, -1)
-  const target = new URL(baseOrigin + '/login')
+  const target = new URL(baseOrigin + '/radius_login')
   if (redirect_uri) target.searchParams.set('redirect_uri', redirect_uri)
   target.searchParams.set('client_id', config.OAUTH_CLIENT_ID || 'grafana')
   target.searchParams.set('error', err)

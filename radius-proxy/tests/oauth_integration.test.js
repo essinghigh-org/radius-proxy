@@ -31,7 +31,7 @@ async function run() {
   process.env.PERMITTED_CLASSES = 'test_group'
 
   // Import the authorize route after env is set so config is derived correctly.
-  const authModule = await import('../app/api/oauth/authorize/route.ts')
+  const authModule = await import('../app/radius_login/api/oauth/authorize/route.ts')
   const authorizePOST = authModule.POST
 
   // Perform the authorize POST (simulates the login form submission)
@@ -46,7 +46,7 @@ async function run() {
     state: 's123',
   }).toString()
 
-  const authReq = new Request('http://localhost/api/oauth/authorize', {
+  const authReq = new Request('http://localhost/radius_login/api/oauth/authorize', {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: form,
@@ -65,12 +65,12 @@ async function run() {
   assert.strictEqual(state, 's123', 'State was not preserved')
 
   // Exchange code for tokens via the token endpoint
-  const tokenModule = await import('../app/api/oauth/token/route.ts')
+  const tokenModule = await import('../app/radius_login/api/oauth/token/route.ts')
   const tokenPOST = tokenModule.POST
 
   const creds = Buffer.from('grafana:secret').toString('base64')
   const tokenForm = new URLSearchParams({ grant_type: 'authorization_code', code }).toString()
-  const tokenReq = new Request('http://localhost/api/oauth/token', {
+  const tokenReq = new Request('http://localhost/radius_login/api/oauth/token', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',

@@ -63,7 +63,7 @@ function parseClassMapRaw(raw) {
 const raw = extractClassMapRaw(content)
 assert.ok(raw, 'CLASS_MAP not found in config.example.toml')
 const parsed = parseClassMapRaw(raw)
-assert.ok(parsed['editor_group'] && Array.isArray(parsed['editor_group']))
-assert.ok(parsed['admin_group'] && Array.isArray(parsed['admin_group']))
+assert.ok(parsed['example_class'] && Array.isArray(parsed['example_class']))
+assert.ok(parsed['another_example_class'] && Array.isArray(parsed['another_example_class']))
 
 console.log('class_map parsing test passed')

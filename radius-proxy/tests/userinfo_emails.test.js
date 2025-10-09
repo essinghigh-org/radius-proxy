@@ -10,10 +10,10 @@ const __dirname = path.dirname(__filename)
 async function run() {
   const username = 'testuser'
   const token = signToken({ sub: username, role: 'Viewer', name: username, email: `${username}@${config.EMAIL_SUFFIX}` })
-  const modPath = path.join(__dirname, '../app/api/oauth/userinfo/emails/route.ts')
+  const modPath = path.join(__dirname, '../app/radius_login/api/oauth/userinfo/emails/route.ts')
   // Dynamic import via transpilation (Bun can import TS directly)
   const { GET } = await import(modPath)
-  const req = new Request('http://localhost/api/oauth/userinfo/emails', { headers: { authorization: 'Bearer ' + token } })
+  const req = new Request('http://localhost/radius_login/api/oauth/userinfo/emails', { headers: { authorization: 'Bearer ' + token } })
   const res = await GET(req)
   const json = await res.json()
   assert.ok(Array.isArray(json), 'Response should be array')

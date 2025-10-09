@@ -31,8 +31,8 @@ async function run() {
   process.env.PERMITTED_CLASSES = ' '
 
   // Import routes
-  const authModule = require('../app/api/oauth/authorize/route.ts')
-  const tokenModule = require('../app/api/oauth/token/route.ts')
+  const authModule = require('../app/radius_login/api/oauth/authorize/route.ts')
+  const tokenModule = require('../app/radius_login/api/oauth/token/route.ts')
   const authorizePOST = authModule.POST
   const tokenPOST = tokenModule.POST
 
@@ -41,7 +41,7 @@ async function run() {
     const body = new URLSearchParams({ user, password, client_id: 'grafana', redirect_uri: 'http://localhost/callback', state: 's123' })
     if (code_challenge) body.set('code_challenge', code_challenge)
     if (code_challenge_method) body.set('code_challenge_method', code_challenge_method)
-    const req = new Request('http://localhost/api/oauth/authorize', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+    const req = new Request('http://localhost/radius_login/api/oauth/authorize', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: body.toString() })
     const res = await authorizePOST(req)
     assert.ok(res.status === 302 || res.status === 301, `Expected redirect, got ${res.status}`)
     const loc = res.headers.get('location') || res.headers.get('Location')
@@ -55,7 +55,7 @@ async function run() {
     const creds = Buffer.from('grafana:secret').toString('base64')
     const form = new URLSearchParams({ grant_type: 'authorization_code', code })
     if (code_verifier) form.set('code_verifier', code_verifier)
-    const req = new Request('http://localhost/api/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: 'Basic ' + creds }, body: form.toString() })
+    const req = new Request('http://localhost/radius_login/api/oauth/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', authorization: 'Basic ' + creds }, body: form.toString() })
     const res = await tokenPOST(req)
     return res
   }

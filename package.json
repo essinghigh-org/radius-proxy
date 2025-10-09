@@ -8,5 +8,8 @@
     "test:authenticator": "cd ./radius-proxy && bun ./tests/authenticator_behavior.test.js",
     "test:oauth": "cd ./radius-proxy && bun ./tests/oauth_integration.test.js",
     "test:radius_ts": "cd ./radius-proxy && bun ./tests/radius_ts.test.js"
+  },
+  "dependencies": {
+    "jest": "^30.2.0"
   }
 }

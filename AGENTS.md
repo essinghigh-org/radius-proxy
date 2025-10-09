@@ -12,9 +12,9 @@ RADIUS authentication
 - Legacy helpers (tests & fakes): [`lib/radius_client.js`](radius-proxy/lib/radius_client.js:1), [`lib/radius_net.js`](radius-proxy/lib/radius_net.js:1).
 
 OAuth endpoints (Next.js route handlers)
-- Authorize (POST): [`app/api/oauth/authorize/route.ts`](radius-proxy/app/api/oauth/authorize/route.ts:1) — validate client, call radiusAuthenticate, enforce permitted class via [`lib/access.ts`](radius-proxy/lib/access.ts:1), store one-time code, redirect using `config.REDIRECT_URIS` or same-origin.
-- Token (POST): [`app/api/oauth/token/route.ts`](radius-proxy/app/api/oauth/token/route.ts:1) — exchange code for tokens, support refresh token rotation, run async Grafana team add after issuing tokens.
-- Userinfo & emails: [`app/api/oauth/userinfo/route.ts`](radius-proxy/app/api/oauth/userinfo/route.ts:1), [`app/api/oauth/userinfo/emails/route.ts`](radius-proxy/app/api/oauth/userinfo/emails/route.ts:1) — derive claims from JWT; synthesize emails as `<sub>@EMAIL_SUFFIX`.
+- Authorize (POST): [`app/radius_login/api/oauth/authorize/route.ts`](radius-proxy/app/radius_login/api/oauth/authorize/route.ts:1) — validate client, call radiusAuthenticate, enforce permitted class via [`lib/access.ts`](radius-proxy/lib/access.ts:1), store one-time code, redirect using `config.REDIRECT_URIS` or same-origin.
+- Token (POST): [`app/radius_login/api/oauth/token/route.ts`](radius-proxy/app/radius_login/api/oauth/token/route.ts:1) — exchange code for tokens, support refresh token rotation, run async Grafana team add after issuing tokens.
+- Userinfo & emails: [`app/radius_login/api/oauth/userinfo/route.ts`](radius-proxy/app/radius_login/api/oauth/userinfo/route.ts:1), [`app/radius_login/api/oauth/userinfo/emails/route.ts`](radius-proxy/app/radius_login/api/oauth/userinfo/emails/route.ts:1) — derive claims from JWT; synthesize emails as `<sub>@EMAIL_SUFFIX`.
 
 Storage
 - In-memory storage only: [`lib/storage.ts`](radius-proxy/lib/storage.ts:1). Use `getStorage()`; do not add global maps elsewhere. Storage supports auth codes, refresh tokens, and periodic cleanup.
@@ -45,11 +45,11 @@ Developer & test workflows
 Adding features
 - To add persistence: replace `MemoryStorage` behind `getStorage()` without changing callers.
 - New claims: add to token exchange (all grant types) and mirror in userinfo routes; update tests to assert presence.
-- Additional OAuth flows: extend the switch in [`app/api/oauth/token/route.ts`](radius-proxy/app/api/oauth/token/route.ts:1). Keep spec error strings (`invalid_client`, `invalid_grant`, etc.).
+- Additional OAuth flows: extend the switch in [`app/radius_login/api/oauth/token/route.ts`](radius-proxy/app/radius_login/api/oauth/token/route.ts:1). Keep spec error strings (`invalid_client`, `invalid_grant`, etc.).
 - RADIUS attributes: extend parser in [`lib/radius.ts`](radius-proxy/lib/radius.ts:1) and keep safety checks (length bounds) and authenticator verification.
 
 Quick file map
-- OAuth handlers: [`app/api/oauth/**/route.ts`](radius-proxy/app/api/oauth/:1)
+- OAuth handlers: [`app/radius_login/api/oauth/**/route.ts`](radius-proxy/app/radius_login/api/oauth/:1)
 - Core protocol: [`lib/radius.ts`](radius-proxy/lib/radius.ts:1), legacy helpers [`lib/radius_net.js`](radius-proxy/lib/radius_net.js:1)
 - AuthZ: [`lib/access.ts`](radius-proxy/lib/access.ts:1)
 - Config & hot reload: [`lib/config.ts`](radius-proxy/lib/config.ts:1)
