@@ -44,4 +44,4 @@ config.toml
 *.tsbuildinfo
 next-env.d.ts
 
-data/
+.*/

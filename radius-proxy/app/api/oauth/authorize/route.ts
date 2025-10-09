@@ -24,8 +24,13 @@ export async function GET(req: Request) {
   }
   const client_id = url.searchParams.get('client_id') || ''
   const redirect_uri = url.searchParams.get('redirect_uri') || ''
+  const code_challenge = url.searchParams.get('code_challenge') || ''
+  const code_challenge_method = url.searchParams.get('code_challenge_method') || ''
   const state = url.searchParams.get('state') || ''
   const response_type = url.searchParams.get('response_type') || 'code'
+
+  // Always log GET params so dev server consoles show incoming requests (helps debug PKCE presence)
+  info('[authorize GET] params', { client_id, redirect_uri, state, response_type, code_challenge, code_challenge_method })
 
   // Basic validation
   if (!client_id || !redirect_uri || response_type !== 'code') {
@@ -51,6 +56,11 @@ export async function POST(req: Request) {
   const state = String(body.get('state') || '')
   const accept = String(body.get('accept') || '') // if set to json, return JSON instead of redirect
   const scope = String(body.get('scope') || 'openid profile')
+  // PKCE parameters (optional)
+  const code_challenge = String(body.get('code_challenge') || '')
+  const code_challenge_method = String(body.get('code_challenge_method') || '')
+  // Log incoming PKCE on POST as well so dev server shows it immediately
+  info('[authorize POST] received', { client_id: _client_id, redirect_uri, state, code_challenge: !!code_challenge, code_challenge_method })
   const start = Date.now()
   // derive origin for absolute redirects (respecting reverse proxy headers like in GET)
   const origin = getIssuer(req)
@@ -124,8 +134,15 @@ export async function POST(req: Request) {
       class: res.class, 
       scope: scope, 
       groups: groups, 
+      // store PKCE challenge if provided (per RFC7636)
+      code_challenge: code_challenge || undefined,
+      code_challenge_method: code_challenge_method || undefined,
       expiresAt: expiresAt 
     })
+    if (code_challenge) {
+      const msg = { user: username, code: code, method: code_challenge_method || 'plain' }
+      info('[authorize] stored PKCE challenge', msg)
+    }
   } catch (err) {
     error('[authorize] Failed to store OAuth code', { error: (err as Error).message })
     if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
@@ -150,7 +167,8 @@ export async function POST(req: Request) {
       }
       out.searchParams.set('code', code)
       if (state) out.searchParams.set('state', state)
-      info('[authorize] success', { user: username, class: res.class, ms: Date.now() - start })
+  const successMsg = { user: username, class: res.class, ms: Date.now() - start }
+  info('[authorize] success', successMsg)
       return NextResponse.redirect(out.toString(), { status: 302 })
     } catch (e) {
       error('[authorize] invalid redirect_uri', { redirect_uri, err: (e as Error).message })

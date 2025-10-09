@@ -5,6 +5,7 @@ import { getIssuer } from "@/lib/server-utils"
 import { addUserToTeamByEmail } from '@/lib/grafana'
 import { getStorage } from '@/lib/storage'
 import crypto from "crypto"
+import { info, warn } from '@/lib/log'
 
 export async function POST(req: Request) {
   const body = await req.formData()
@@ -50,6 +51,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
     }
 
+    // PKCE verification (RFC 7636)
+    const storedChallenge = entry.code_challenge
+    const storedMethod = entry.code_challenge_method || ''
+    const code_verifier = String(body.get('code_verifier') || '')
+
+    if (storedChallenge) {
+      // If a code_challenge was stored with the code, the client MUST supply code_verifier
+      if (!code_verifier) {
+        const m = { code }
+        warn('[token] PKCE required but code_verifier missing', m)
+        return NextResponse.json({ error: 'invalid_grant', error_description: 'code_verifier required' }, { status: 400 })
+      }
+      // Compare according to method
+      if (!storedMethod || storedMethod === 'plain') {
+        // plain comparison
+        if (code_verifier !== storedChallenge) {
+          const m = { code }
+          warn('[token] PKCE plain verification failed', m)
+          return NextResponse.json({ error: 'invalid_grant' }, { status: 400 })
+        }
+        const mPlain = { code }
+        info('[token] PKCE plain verification succeeded', mPlain)
+      } else if (storedMethod === 'S256') {
+        // compute BASE64URL-ENCODE(SHA256(ASCII(code_verifier))) and compare
+        const hash = crypto.createHash('sha256').update(code_verifier, 'ascii').digest()
+        const b64 = Buffer.from(hash).toString('base64')
+        // convert to base64url without padding
+        const b64url = b64.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+        if (b64url !== storedChallenge) {
+          const m = { code }
+          warn('[token] PKCE S256 verification failed', m)
+          return NextResponse.json({ error: 'invalid_grant' }, { status: 400 })
+        }
+        const mS256 = { code }
+        info('[token] PKCE S256 verification succeeded', mS256)
+      } else {
+        // Unsupported transformation
+        const m = { method: storedMethod, code }
+        warn('[token] PKCE method unsupported', m)
+        return NextResponse.json({ error: 'invalid_request', error_description: 'code_challenge_method not supported' }, { status: 400 })
+      }
+    }
+
     const scope = entry.scope || 'openid profile'
     const now = Math.floor(Date.now()/1000)
     const issuer = getIssuer(req)
@@ -79,7 +123,7 @@ export async function POST(req: Request) {
       })
     } catch (err) {
       // Log but don't fail - refresh token is optional
-      console.warn('[token] Failed to store refresh token:', (err as Error).message)
+      warn('[token] Failed to store refresh token', { error: (err as Error).message })
     }
 
     // Once exchanged, remove code (one-time use)
@@ -186,7 +230,7 @@ export async function POST(req: Request) {
       await storage.deleteRefreshToken(refreshToken)
     } catch (err) {
       // Log but don't fail - if we can't rotate, return the new tokens with old refresh token
-      console.warn('[token] Failed to rotate refresh token:', (err as Error).message)
+      warn('[token] Failed to rotate refresh token', { error: (err as Error).message })
       return NextResponse.json({ 
         access_token: accessToken, 
         token_type: "bearer", 
