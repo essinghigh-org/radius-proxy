@@ -167,6 +167,11 @@ export async function POST(req: Request) {
       id_token: idToken, 
       refresh_token: refreshToken,
       scope 
+    }, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Pragma': 'no-cache'
+      }
     })
   }
 
@@ -238,6 +243,11 @@ export async function POST(req: Request) {
         id_token: idToken,
         refresh_token: refreshToken, // Keep old token if rotation failed
         scope 
+      }, {
+        headers: {
+          'Cache-Control': 'no-store',
+          'Pragma': 'no-cache'
+        }
       })
     }
 
@@ -248,6 +258,11 @@ export async function POST(req: Request) {
       id_token: idToken,
       refresh_token: newRefreshToken,
       scope 
+    }, {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Pragma': 'no-cache'
+      }
     })
   }
 

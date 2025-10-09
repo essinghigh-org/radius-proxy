@@ -59,18 +59,36 @@ function parseTomlSimple(content: string): Record<string, string> {
   return out
 }
 
+// Safe numeric parsing with fallback for corrupted values
+function safeParseNumber(value: string | undefined, fallback: number): number {
+  if (!value || value.trim() === '') return fallback
+  const parsed = Number(value)
+  // Check for NaN, Infinity, or other invalid numeric values
+  if (!Number.isFinite(parsed)) return fallback
+  return parsed
+}
+
 function loadConfig(): Config {
   const root = process.cwd()
   const cfgPath = path.join(root, "config.toml")
   const exampleCfgPath = path.join(root, "config.example.toml")
   let base: Record<string, string> = {}
-  // Prefer explicit config.toml but fall back to config.example.toml if present (useful for examples)
+  
+  // For tests, always use config.example.toml
   let cfgFile = ""
-  if (fs.existsSync(cfgPath)) {
-    cfgFile = cfgPath
-  } else if (fs.existsSync(exampleCfgPath)) {
-    cfgFile = exampleCfgPath
+  if (process.env.NODE_ENV === 'test') {
+    if (fs.existsSync(exampleCfgPath)) {
+      cfgFile = exampleCfgPath
+    }
+  } else {
+    // Prefer explicit config.toml but fall back to config.example.toml if present (useful for examples)
+    if (fs.existsSync(cfgPath)) {
+      cfgFile = cfgPath
+    } else if (fs.existsSync(exampleCfgPath)) {
+      cfgFile = exampleCfgPath
+    }
   }
+  
   if (cfgFile) {
     const content = fs.readFileSync(cfgFile, "utf8")
     base = parseTomlSimple(content)
@@ -82,9 +100,9 @@ function loadConfig(): Config {
     OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "secret",
     RADIUS_HOST: process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1",
     RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
-    RADIUS_PORT: Number(process.env.RADIUS_PORT || base["RADIUS_PORT"] || 1812),
+    RADIUS_PORT: safeParseNumber(process.env.RADIUS_PORT || base["RADIUS_PORT"], 1812),
     HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
-  HTTP_PORT: Number(process.env.HTTP_PORT || base["HTTP_PORT"] || 54567),
+    HTTP_PORT: safeParseNumber(process.env.HTTP_PORT || base["HTTP_PORT"], 54567),
     ISSUER: process.env.ISSUER || base["ISSUER"],
     GRAFANA_SA_TOKEN: process.env.GRAFANA_SA_TOKEN || base["GRAFANA_SA_TOKEN"],
     GRAFANA_BASE_URL: process.env.GRAFANA_BASE_URL || base["GRAFANA_BASE_URL"],
@@ -108,9 +126,9 @@ function loadConfig(): Config {
         .map(s => s.trim().replace(/^"|"$/g, "")) // strip surrounding quotes if present
         .filter(Boolean)
     })(),
-    OAUTH_CODE_TTL: Number(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"] || 600),
-    OAUTH_REFRESH_TOKEN_TTL: Number(process.env.OAUTH_REFRESH_TOKEN_TTL || base["OAUTH_REFRESH_TOKEN_TTL"] || 7776000), // 90 days default
-    RADIUS_TIMEOUT: Number(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"] || 5),
+    OAUTH_CODE_TTL: safeParseNumber(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"], 600),
+    OAUTH_REFRESH_TOKEN_TTL: safeParseNumber(process.env.OAUTH_REFRESH_TOKEN_TTL || base["OAUTH_REFRESH_TOKEN_TTL"], 7776000), // 90 days default
+    RADIUS_TIMEOUT: safeParseNumber(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"], 5),
     CLASS_MAP: (() => {
       // Accept several simple formats in config.toml for backwards compat:
       // 1) Inline TOML table-like string: CLASS_MAP = { editor_group = [2,3], admin_group = [5] }
@@ -191,8 +209,13 @@ function getConfig(): Config {
   const cfgPath = path.join(root, "config.toml")
   const exampleCfgPath = path.join(root, "config.example.toml")
   let watchPath: string | null = null
-  if (fs.existsSync(cfgPath)) watchPath = cfgPath
-  else if (fs.existsSync(exampleCfgPath)) watchPath = exampleCfgPath
+  
+  if (process.env.NODE_ENV === 'test') {
+    if (fs.existsSync(exampleCfgPath)) watchPath = exampleCfgPath
+  } else {
+    if (fs.existsSync(cfgPath)) watchPath = cfgPath
+    else if (fs.existsSync(exampleCfgPath)) watchPath = exampleCfgPath
+  }
 
   try {
     if (watchPath) {
@@ -221,6 +244,12 @@ export const config: Config = new Proxy({} as Config, {
   }
 })
 
+// Test utility to invalidate config cache
+export function _invalidateConfigCache() {
+  _cachedConfig = null
+  _cachedMtime = 0
+}
+
 // Install a lightweight filesystem watcher so changes to config.toml (or the
 // example file) invalidate the in-memory cache immediately. This provides
 // near-real-time config updates without requiring a server restart; the
@@ -231,7 +260,14 @@ export const config: Config = new Proxy({} as Config, {
     const root = process.cwd()
     const cfgPath = path.join(root, "config.toml")
     const exampleCfgPath = path.join(root, "config.example.toml")
-    const watchPath = fs.existsSync(cfgPath) ? cfgPath : (fs.existsSync(exampleCfgPath) ? exampleCfgPath : null)
+    
+    let watchPath: string | null = null
+    if (process.env.NODE_ENV === 'test') {
+      watchPath = fs.existsSync(exampleCfgPath) ? exampleCfgPath : null
+    } else {
+      watchPath = fs.existsSync(cfgPath) ? cfgPath : (fs.existsSync(exampleCfgPath) ? exampleCfgPath : null)
+    }
+    
     if (!watchPath) return
     try {
       fs.watch(watchPath, { persistent: false }, () => {

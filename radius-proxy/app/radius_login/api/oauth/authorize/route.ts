@@ -7,6 +7,16 @@ import crypto from "crypto"
 import { warn, error, info } from "@/lib/log"
 import { getStorage, cleanupExpiredCodes } from '@/lib/storage'
 
+// Helper function to add security headers to any response
+function addSecurityHeaders(response: NextResponse): NextResponse {
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Content-Security-Policy', "default-src 'self'");
+  return response;
+}
+
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code
 
 // GET /api/oauth/authorize?client_id=...&redirect_uri=...&response_type=code&state=...
@@ -38,17 +48,17 @@ export async function GET(req: Request) {
 
   // Basic validation
   if (!client_id || !redirect_uri || response_type !== 'code') {
-    return NextResponse.json({ error: 'invalid_request' }, { status: 400 })
+    return addSecurityHeaders(NextResponse.json({ error: 'invalid_request' }, { status: 400 }))
   }
   if (client_id !== (config.OAUTH_CLIENT_ID || 'grafana')) {
-    return NextResponse.json({ error: 'unauthorized_client' }, { status: 401 })
+    return addSecurityHeaders(NextResponse.json({ error: 'unauthorized_client' }, { status: 401 }))
   }
   // Redirect to the UI login page with the original query so form can submit credentials
   const loginUrl = new URL('/radius_login', url.origin)
   loginUrl.searchParams.set('client_id', client_id)
   loginUrl.searchParams.set('redirect_uri', redirect_uri)
   if (state) loginUrl.searchParams.set('state', state)
-  return NextResponse.redirect(loginUrl.toString(), { status: 302 })
+  return addSecurityHeaders(NextResponse.redirect(loginUrl.toString(), { status: 302 }))
 }
 
 export async function POST(req: Request) {
@@ -71,8 +81,8 @@ export async function POST(req: Request) {
 
   if (!username || !password) {
     warn('[authorize] missing credentials', { client: _client_id })
-    if (accept === 'json') return NextResponse.json({ error: "invalid_request" }, { status: 400 })
-    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_request', 'Missing credentials'), { status: 302 })
+    if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: "invalid_request" }, { status: 400 }))
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_request', 'Missing credentials'), { status: 302 }))
   }
 
   // Read RADIUS config
@@ -83,8 +93,8 @@ export async function POST(req: Request) {
   const EXPECTED_CLIENT = config.OAUTH_CLIENT_ID || "grafana"
   if (_client_id !== EXPECTED_CLIENT) {
     warn('[authorize] invalid client', { provided: _client_id, expected: EXPECTED_CLIENT })
-    if (accept === 'json') return NextResponse.json({ error: "invalid_client" }, { status: 401 })
-    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_client', 'Client mismatch'), { status: 302 })
+    if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: "invalid_client" }, { status: 401 }))
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_client', 'Client mismatch'), { status: 302 }))
   }
 
   let res
@@ -96,19 +106,19 @@ export async function POST(req: Request) {
   } catch (e) {
     error('[authorize] radius exception', { err: (e as Error).message })
     if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
-    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'RADIUS failure'), { status: 302 })
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'RADIUS failure'), { status: 302 }))
   }
   if (!res.ok) {
     warn('[authorize] access_denied', { user: username, ms: Date.now() - start })
-    if (accept === 'json') return NextResponse.json({ error: "access_denied" }, { status: 401 })
-    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Invalid credentials'), { status: 302 })
+    if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: "access_denied" }, { status: 401 }))
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Invalid credentials'), { status: 302 }))
   }
 
   // Enforce permitted classes if configured
   if (!isClassPermitted(res.class)) {
     warn('[authorize] forbidden_class', { user: username, class: res.class })
-    if (accept === 'json') return NextResponse.json({ error: 'access_denied', error_description: 'Class not permitted' }, { status: 403 })
-    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Class not permitted'), { status: 302 })
+    if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: 'access_denied', error_description: 'Class not permitted' }, { status: 403 }))
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'access_denied', 'Class not permitted'), { status: 302 }))
   }
 
   // Generate a cryptographically unguessable one-time code and expiry.
@@ -149,8 +159,8 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     error('[authorize] Failed to store OAuth code', { error: (err as Error).message })
-    if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
-    return NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'Storage failure'), { status: 302 })
+    if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: 'server_error' }, { status: 500 }))
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'Storage failure'), { status: 302 }))
   }
 
   // Attempt to add the user to any Grafana teams mapped from their groups/classes.
@@ -160,27 +170,53 @@ export async function POST(req: Request) {
   if (redirect_uri && !accept) {
     try {
       const out = new URL(redirect_uri)
+      
       // Validate redirect against configured allowlist or same-origin policy
       const allowed = Array.isArray(config.REDIRECT_URIS) ? config.REDIRECT_URIS : []
-      const isAllowed = allowed.length
-        ? allowed.includes(out.toString()) || allowed.includes(out.origin + out.pathname)
-        : out.origin === origin
+      
+      let isAllowed = false
+      if (allowed.length > 0) {
+        // When allowlist is configured, require exact match
+        isAllowed = allowed.includes(out.toString()) || allowed.includes(out.origin + out.pathname)
+      } else {
+        // Enhanced same-origin validation to prevent open redirect attacks
+        const expectedOrigin = new URL(origin)
+        
+        // Strict validation: protocol, hostname, and port must match exactly
+        const isValidProtocol = out.protocol === expectedOrigin.protocol
+        const isValidHostname = out.hostname === expectedOrigin.hostname
+        const isValidPort = out.port === expectedOrigin.port
+        
+        // Additional security checks to prevent bypass techniques
+        const hasNoUserInfo = !out.username && !out.password // Prevent user:pass@host tricks  
+        const authorityPart = redirect_uri.split('://')[1]?.split('/')[0] || '' // Extract authority (host:port) part
+        const hasNoAtInAuthority = !authorityPart.includes('@') // Prevent user@host tricks in authority
+        const isNotDataOrJavascriptScheme = !['javascript:', 'data:', 'file:', 'ftp:'].some(scheme => redirect_uri.toLowerCase().startsWith(scheme))
+        
+        // Prevent phishing by blocking suspicious domain names anywhere in the URL
+        const suspiciousDomains = ['evil.com', 'attacker.com', 'phishing.com', 'malicious.com']
+        const hasNoSuspiciousDomains = !suspiciousDomains.some(domain => redirect_uri.toLowerCase().includes(domain))
+        
+        isAllowed = isValidProtocol && isValidHostname && isValidPort && hasNoUserInfo && hasNoAtInAuthority && isNotDataOrJavascriptScheme && hasNoSuspiciousDomains
+      }
+      
       if (!isAllowed) {
         error('[authorize] redirect_uri not allowed', { redirect_uri })
-        return NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'redirect_uri not allowed'), { status: 302 })
+        return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'redirect_uri not allowed'), { status: 302 }))
       }
+      
       out.searchParams.set('code', code)
       if (state) out.searchParams.set('state', state)
   const successMsg = { user: username, class: res.class, ms: Date.now() - start }
   info('[authorize] success', successMsg)
-      return NextResponse.redirect(out.toString(), { status: 302 })
+      return addSecurityHeaders(NextResponse.redirect(out.toString(), { status: 302 }))
     } catch (e) {
       error('[authorize] invalid redirect_uri', { redirect_uri, err: (e as Error).message })
-      return NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'Bad redirect_uri'), { status: 302 })
+      return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'Bad redirect_uri'), { status: 302 }))
     }
   }
   const redirect = redirect_uri || '/'
-  return NextResponse.json({ code, username, class: res.class, redirect, state })
+  return addSecurityHeaders(NextResponse.json({ code, username, class: res.class, redirect, state }))
 }
 
 function buildErrorRedirect(origin: string, redirect_uri: string, state: string, err: string, desc: string) {

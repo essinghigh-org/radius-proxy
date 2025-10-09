@@ -108,16 +108,9 @@ export async function radiusAuthenticate(
         ])
         const expected = crypto.createHash("md5").update(toHash).digest()
         if (!expected.equals(respAuth)) {
-          // Some servers use a simple echo of the Request Authenticator (legacy behavior).
-          // Accept the response if the authenticator equals the original request authenticator,
-          // but emit a warning so operators can notice insecure behavior.
-          if (respAuth.equals(authenticator)) {
-            warn('[radius] response authenticator equals request authenticator (legacy behavior); accepting with warning')
-          } else {
-            warn('[radius] response authenticator mismatch; dropping response')
-            resolve({ ok: false, raw: msg.toString("hex") })
-            return
-          }
+          warn('[radius] response authenticator mismatch; dropping response')
+          resolve({ ok: false, raw: msg.toString("hex") })
+          return
         }
       } catch (e) {
         // Do not fail the entire flow on verification error; just warn and continue parsing.
@@ -126,24 +119,41 @@ export async function radiusAuthenticate(
 
       // 2 = Access-Accept, 3 = Access-Reject
       if (code === 2) {
-        // parse attributes for Class (type 25)
+        // parse attributes for Class (type 25) - handle multiple classes and validate properly
         let offset = 20
         let foundClass: string | undefined = undefined
+        const allClasses: string[] = []
+        
         while (offset + 2 <= msg.length) {
           const t = msg.readUInt8(offset)
           const l = msg.readUInt8(offset + 1)
-          if (l < 2) break
+          
+          // Validate attribute length per RFC 2865
+          if (l < 2) {
+            warn('[radius] invalid attribute length < 2; stopping parse')
+            break
+          }
+          
           // ensure attribute does not run past the end of the packet
           if (offset + l > msg.length) {
             warn('[radius] attribute length runs past packet end; stopping parse')
             break
           }
+          
           const value = msg.slice(offset + 2, offset + l)
-          if (t === 25) {
-            foundClass = value.toString("utf8")
+          
+          if (t === 25) { // Class attribute
+            const classValue = value.toString("utf8")
+            allClasses.push(classValue)
+            // Take the first Class attribute encountered per RFC 2865 implementation choice
+            if (!foundClass) {
+              foundClass = classValue
+            }
           }
+          
           offset += l
         }
+        
         resolve({ ok: true, class: foundClass, raw: msg.toString("hex") })
       } else {
         resolve({ ok: false, raw: msg.toString("hex") })
