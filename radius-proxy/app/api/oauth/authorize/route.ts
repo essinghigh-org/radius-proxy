@@ -181,7 +181,10 @@ export async function POST(req: Request) {
 
 function buildErrorRedirect(origin: string, redirect_uri: string, state: string, err: string, desc: string) {
   // origin should be like https://host[:port]
-  let baseOrigin = origin || 'http://localhost:3000'
+  // Fall back to a sensible default using the configured HTTP port so local dev and compose
+  // deployments produce correct redirect URLs.
+  const fallbackPort = (config && config.HTTP_PORT) ? String(config.HTTP_PORT) : '54567'
+  let baseOrigin = origin || `http://localhost:${fallbackPort}`
   // strip any trailing slash
   if (baseOrigin.endsWith('/')) baseOrigin = baseOrigin.slice(0, -1)
   const target = new URL(baseOrigin + '/login')

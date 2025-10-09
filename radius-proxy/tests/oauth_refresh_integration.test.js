@@ -28,7 +28,7 @@ jest.mock('../lib/config', () => ({
 
 // Mock server utils
 jest.mock('../lib/server-utils', () => ({
-  getIssuer: jest.fn().mockReturnValue('http://localhost:3000')
+  getIssuer: jest.fn().mockReturnValue('http://localhost:54567')
 }))
 
 // Import the Next.js API route handler after mocks

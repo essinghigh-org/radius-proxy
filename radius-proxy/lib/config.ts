@@ -84,7 +84,7 @@ function loadConfig(): Config {
     RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
     RADIUS_PORT: Number(process.env.RADIUS_PORT || base["RADIUS_PORT"] || 1812),
     HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
-    HTTP_PORT: Number(process.env.HTTP_PORT || base["HTTP_PORT"] || 3000),
+  HTTP_PORT: Number(process.env.HTTP_PORT || base["HTTP_PORT"] || 54567),
     ISSUER: process.env.ISSUER || base["ISSUER"],
     GRAFANA_SA_TOKEN: process.env.GRAFANA_SA_TOKEN || base["GRAFANA_SA_TOKEN"],
     GRAFANA_BASE_URL: process.env.GRAFANA_BASE_URL || base["GRAFANA_BASE_URL"],
