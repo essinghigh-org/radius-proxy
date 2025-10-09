@@ -1,52 +1,73 @@
 # AI Agent Guide (radius-proxy)
 
-Purpose: Bridge Grafana OAuth2 login to a legacy / external RADIUS source. Core flow: RADIUS PAP auth -> OAuth authorization code -> JWT (access/id) + optional Grafana team assignment.
+Purpose: Bridge Grafana OAuth2 login to a legacy RADIUS source.
+Core flow: RADIUS PAP auth -> OAuth authorization code -> JWT (access & id) -> optional Grafana team assignment.
 
-## Architecture (server side first)
-- Config hot‑reload via `lib/config.ts` Proxy + fs.watch; always read runtime values from `config` (never cache at module top). TOML + env overrides; arrays: comma split; `CLASS_MAP` supports TOML inline, loose syntax, or JSON.
-- RADIUS auth: minimal client (`lib/radius.ts`) does PAP, authenticator verification, extracts Class (type 25). Older JS helpers kept in `radius_client.js` / `radius_net.js` for tests & fake servers.
-- OAuth endpoints (Next.js route handlers):
-  - `authorize/route.ts` POST: validates client, calls `radiusAuthenticate`, enforces permitted class (`lib/access.ts`), stores one‑time code in storage, redirects (allowlist: `config.REDIRECT_URIS` or same‑origin).
-  - `token/route.ts` POST: exchanges code -> access/id/refresh tokens; later grant_type=refresh_token rotation logic; performs async Grafana team add after issuing tokens.
-  - `userinfo` + `userinfo/emails`: derive claims from JWT; emails synthesized `<sub>@EMAIL_SUFFIX`.
-- Storage: in‑memory only (`lib/storage.ts`) with unified interface supporting auth codes + refresh tokens + periodic cleanup (`cleanupExpiredCodes`). Do not introduce global maps elsewhere—use `getStorage()`.
-- JWT: `lib/jwt.ts` chooses HS256 (test/env) or generates RS256 keypair; prefer using `signToken/verifyToken`. Kid auto set for RSA.
-- Grafana team mapping: `CLASS_MAP` (group/class -> team IDs). Async, idempotent add in `lib/grafana.ts` with simple in‑flight + recent success caches.
-- Issuer/origin resolution: always use `getIssuer(req)` (respects X-Forwarded-* or `config.ISSUER`).
+Runtime & config
+- Config hot-reload: use [`lib/config.ts`](radius-proxy/lib/config.ts:1). Always read values from config at runtime; do not cache at module top.
+- TOML + env overrides; arrays are comma-split. `CLASS_MAP` accepts TOML inline, loose syntax, or JSON.
 
-## Key Conventions / Patterns
-- Class/group parsing: RADIUS `Class` attr may contain multiple tokens separated by `,` or `;`; splitting logic duplicated in authorize route; permitted/admin matching uses token list.
-- Claims: `groups`, `grafana_admin` (boolean), and optional `role` (GrafanaAdmin) are injected into both access & id tokens.
-- Redirect safety: If `REDIRECT_URIS` non-empty, only exact match (full URL or origin+path) allowed; else must be same origin as request.
-- Timeouts: Pass milliseconds explicitly to `radiusAuthenticate`; config value `RADIUS_TIMEOUT` is seconds.
-- Logging: `lib/log.ts` gates debug/info/warn on `DEBUG` or non-production. Errors always surface.
-- Config edits at runtime propagate automatically—never memoize a value you intend to observe changing.
+RADIUS authentication
+- Primary implementation: [`lib/radius.ts`](radius-proxy/lib/radius.ts:1). Use PAP, verify authenticator, extract Class (type 25).
+- Legacy helpers (tests & fakes): [`lib/radius_client.js`](radius-proxy/lib/radius_client.js:1), [`lib/radius_net.js`](radius-proxy/lib/radius_net.js:1).
 
-## Developer / Test Workflows
-- Dev server: from project root `bun run --cwd radius-proxy dev` (or cd into folder then `bun run dev`). Uses Next.js 15 + Turbopack.
-- Tests (Bun): root scripts proxy: `bun run test:all` (runs targeted test scripts). Individual: `bun run test:radius`, `bun run test:emails`, etc.
-- Integration tests spin an ephemeral fake RADIUS UDP server (see `tests/radius.test.js`, `tests/oauth_integration.test.js`) using helpers in `lib/radius_net.js`.
-- Refresh token scenarios covered in `tests/oauth_refresh_integration.test.js` (jest mocks `config`, `radius`, `server-utils`). Keep new logic mock-friendly (avoid side effects during import).
-- Deterministic JWT for tests: `NODE_ENV=test` triggers HS256 fixed secret (persisted `.keys/jwt.hmac` or fallback); do not rely on external key material in tests.
+OAuth endpoints (Next.js route handlers)
+- Authorize (POST): [`app/api/oauth/authorize/route.ts`](radius-proxy/app/api/oauth/authorize/route.ts:1) — validate client, call radiusAuthenticate, enforce permitted class via [`lib/access.ts`](radius-proxy/lib/access.ts:1), store one-time code, redirect using `config.REDIRECT_URIS` or same-origin.
+- Token (POST): [`app/api/oauth/token/route.ts`](radius-proxy/app/api/oauth/token/route.ts:1) — exchange code for tokens, support refresh token rotation, run async Grafana team add after issuing tokens.
+- Userinfo & emails: [`app/api/oauth/userinfo/route.ts`](radius-proxy/app/api/oauth/userinfo/route.ts:1), [`app/api/oauth/userinfo/emails/route.ts`](radius-proxy/app/api/oauth/userinfo/emails/route.ts:1) — derive claims from JWT; synthesize emails as `<sub>@EMAIL_SUFFIX`.
 
-## When Adding Features
-- Need persistence: replace `MemoryStorage` behind `getStorage()` without changing caller contracts (auth code & refresh token methods both required).
-- New claims: add in token exchange (both grant types) and mirror in `userinfo` routes; ensure tests assert presence.
-- Additional OAuth flows: extend `token/route.ts` switch; keep existing error strings (`invalid_client`, `invalid_grant`, etc.) per spec.
-- RADIUS attributes: extend parser in `lib/radius.ts`; maintain safety checks (length bounds) & authenticator verification.
+Storage
+- In-memory storage only: [`lib/storage.ts`](radius-proxy/lib/storage.ts:1). Use `getStorage()`; do not add global maps elsewhere. Storage supports auth codes, refresh tokens, and periodic cleanup.
 
-## Quick File Map
-- OAuth handlers: `app/api/oauth/**/route.ts`
-- Core protocol: `lib/radius.ts`, legacy helpers `lib/radius_net.js`
-- AuthZ logic: `lib/access.ts`
-- Config & hot reload: `lib/config.ts`
-- Identity & tokens: `lib/jwt.ts`
-- Grafana integration: `lib/grafana.ts`
-- Storage abstraction: `lib/storage.ts`
+Tokens & keys
+- JWT helpers: [`lib/jwt.ts`](radius-proxy/lib/jwt.ts:1). Use HS256 for test/env or RS256 (generated keypair) in other environments. Prefer `signToken` / `verifyToken`.
 
-## Important Notes
+Grafana integration
+- Team mapping via `CLASS_MAP`. Implementation in [`lib/grafana.ts`](radius-proxy/lib/grafana.ts:1) performs async, idempotent adds and keeps simple in-flight and recent-success caches.
 
-- When working on this project, do not bug the user about using a database. In-Memory is fine for this project
-- There is absolutely zero need to retain backwards compatibility, breaking changes are allowed
-- Always use bun, nothing else
-- Commits that do not need a new docker build published should contain "skip_publish" somewhere in the commit message
+Utilities
+- Resolver for issuer/origin: use `getIssuer(req)` implemented in [`lib/server-utils.ts`](radius-proxy/lib/server-utils.ts:1).
+- Logging: [`lib/log.ts`](radius-proxy/lib/log.ts:1) — debug/info/warn gated by `DEBUG` or non-production; errors always logged.
+
+Key conventions
+- Class parsing: the RADIUS `Class` attribute may contain tokens separated by `,` or `;`. Split accordingly and use token lists for permission checks.
+- Claims injected in both access & id tokens: `groups`, `grafana_admin` (boolean) and optional `role` (e.g., GrafanaAdmin).
+- Redirect safety: when `REDIRECT_URIS` is non-empty only allow exact matches (full URL or origin+path); otherwise require same-origin.
+- Timeouts: pass milliseconds explicitly to `radiusAuthenticate`; `RADIUS_TIMEOUT` in config is seconds.
+- Config hot-reload: do not memoize values you expect to change at runtime.
+
+Developer & test workflows
+- Dev server: run from project root: `bun run --cwd radius-proxy dev`. Uses Next.js 15 + Turbopack.
+- Tests (Bun): `bun run test:all` or targeted scripts like `bun run test:radius`.
+- Integration tests spin ephemeral fake RADIUS UDP servers (see tests in [`radius-proxy/tests/`](radius-proxy/tests/:1) such as [`tests/oauth_integration.test.js`](radius-proxy/tests/oauth_integration.test.js:1)).
+- Deterministic JWTs in tests: `NODE_ENV=test` uses HS256 fixed secret from `.keys/jwt.hmac` or fallback.
+
+Adding features
+- To add persistence: replace `MemoryStorage` behind `getStorage()` without changing callers.
+- New claims: add to token exchange (all grant types) and mirror in userinfo routes; update tests to assert presence.
+- Additional OAuth flows: extend the switch in [`app/api/oauth/token/route.ts`](radius-proxy/app/api/oauth/token/route.ts:1). Keep spec error strings (`invalid_client`, `invalid_grant`, etc.).
+- RADIUS attributes: extend parser in [`lib/radius.ts`](radius-proxy/lib/radius.ts:1) and keep safety checks (length bounds) and authenticator verification.
+
+Quick file map
+- OAuth handlers: [`app/api/oauth/**/route.ts`](radius-proxy/app/api/oauth/:1)
+- Core protocol: [`lib/radius.ts`](radius-proxy/lib/radius.ts:1), legacy helpers [`lib/radius_net.js`](radius-proxy/lib/radius_net.js:1)
+- AuthZ: [`lib/access.ts`](radius-proxy/lib/access.ts:1)
+- Config & hot reload: [`lib/config.ts`](radius-proxy/lib/config.ts:1)
+- Identity & tokens: [`lib/jwt.ts`](radius-proxy/lib/jwt.ts:1)
+- Grafana integration: [`lib/grafana.ts`](radius-proxy/lib/grafana.ts:1)
+- Storage: [`lib/storage.ts`](radius-proxy/lib/storage.ts:1)
+
+Important notes
+- Do not ask the user to add a database; in-memory storage is acceptable for this project.
+- Backwards compatibility is not required; breaking changes are allowed.
+- Use Bun for development and tests.
+- For commits that don't require publishing a new Docker image, include "skip_publish" in the commit message.
+
+Concise checklist for agent tasks
+- Read runtime values from [`lib/config.ts`](radius-proxy/lib/config.ts:1)
+- Authenticate via [`lib/radius.ts`](radius-proxy/lib/radius.ts:1)
+- Use `getStorage()` from [`lib/storage.ts`](radius-proxy/lib/storage.ts:1)
+- Sign/verify tokens via [`lib/jwt.ts`](radius-proxy/lib/jwt.ts:1)
+- Run dev with Bun and run tests with Bun
+
+End.
