@@ -48,7 +48,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
     });
 
     test('should use Request Authenticator in password encryption', async () => {
-      let capturedPacket: Buffer;
+      let capturedPacket: Buffer | undefined;
       const secret = 'testsecret';
       const password = 'testpassword';
       
@@ -72,8 +72,8 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
         // Expected timeout
       }
 
-      const requestAuth = capturedPacket.slice(4, 20);
-      const attributes = parseRADIUSAttributes(capturedPacket);
+  const requestAuth = capturedPacket!.slice(4, 20);
+  const attributes = parseRADIUSAttributes(capturedPacket!);
       const encryptedPassword = attributes.get(2)!;
       
       // Verify password encryption uses the Request Authenticator
@@ -164,7 +164,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
 
   describe('Message-Authenticator Support (RFC 2869)', () => {
     test('should include Message-Authenticator attribute when present', async () => {
-      let capturedPacket: Buffer;
+      let capturedPacket: Buffer | undefined;
       
       const mockSocket = {
         createSocket: jest.fn(() => ({
@@ -186,7 +186,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
         // Expected timeout
       }
 
-      const attributes = parseRADIUSAttributes(capturedPacket);
+  const attributes = parseRADIUSAttributes(capturedPacket!);
       
       // Should include Message-Authenticator (type 80)
       expect(attributes.has(80)).toBe(true);
@@ -196,7 +196,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
     });
 
     test('should compute Message-Authenticator correctly per RFC 2869', async () => {
-      let capturedPacket: Buffer;
+      let capturedPacket: Buffer | undefined;
       const secret = 'testsecret';
       
       const mockSocket = {
@@ -221,7 +221,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
 
       // Verify Message-Authenticator is computed correctly
       // It should be HMAC-MD5 of the entire packet with Message-Authenticator zeroed
-      const packet = Buffer.from(capturedPacket);
+  const packet = Buffer.from(capturedPacket!);
       
       // Find Message-Authenticator attribute and zero it
       let offset = 20;
@@ -242,7 +242,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
       const expected = crypto.createHmac('md5', Buffer.from(secret, 'utf8')).update(packet).digest();
       
       // Get actual Message-Authenticator from original packet
-      const attributes = parseRADIUSAttributes(capturedPacket);
+  const attributes = parseRADIUSAttributes(capturedPacket!);
       const actual = attributes.get(80)!;
       
       expect(actual.equals(expected)).toBe(true);
