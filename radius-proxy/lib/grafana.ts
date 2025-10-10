@@ -1,5 +1,6 @@
 import { config } from './config'
 import { warn, error, info } from './log'
+import https from 'https'
 
 // Types describing Grafana REST API shapes we touch in this helper.
 interface GrafanaOrgUserLookupItem {
@@ -25,6 +26,23 @@ interface GrafanaGlobalCache {
 }
 
 declare const global: typeof globalThis & GrafanaGlobalCache
+
+// Get fetch options with optional TLS configuration
+function getFetchOptions(headers: Record<string, string>, method: string, body?: string): RequestInit {
+  const options: RequestInit = { method, headers }
+  if (body) options.body = body
+  
+  // If TLS verification is disabled, create an HTTPS agent that ignores certificate errors
+  if (config.GRAFANA_INSECURE_TLS) {
+    const agent = new https.Agent({
+      rejectUnauthorized: false
+    })
+    // @ts-ignore - Node.js specific fetch option
+    options.agent = agent
+  }
+  
+  return options
+}
 
 // Add a user to a Grafana team using a service account token.
 // Uses teamId and user email. If the user isn't present in the org yet,
@@ -64,7 +82,7 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
       const headers: Record<string, string> = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
 
       info('[grafana] org user lookup', { email, url: lookupUrl })
-      const lookupRes = await fetch(lookupUrl, { method: 'GET', headers })
+      const lookupRes = await fetch(lookupUrl, getFetchOptions(headers, 'GET'))
       const lookupText = await lookupRes.text().catch(() => '<no body>')
       info('[grafana] org lookup response', { email, url: lookupUrl, status: lookupRes.status, body: lookupText })
 
@@ -112,7 +130,7 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
           info('[grafana] user not found in org lookup; retrying lookup', { email, attempt, backoff })
           await new Promise((res) => setTimeout(res, backoff))
           backoff *= 2
-          const retryRes = await fetch(lookupUrl, { method: 'GET', headers })
+          const retryRes = await fetch(lookupUrl, getFetchOptions(headers, 'GET'))
           const retryText = await retryRes.text().catch(() => '<no body>')
           info('[grafana] org lookup retry response', { email, url: lookupUrl, attempt, status: retryRes.status, body: retryText })
           if (!retryRes.ok) {
@@ -138,7 +156,7 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
       const teamUrl = grafanaBase ? `${grafanaBase}/api/teams/${teamId}/members` : `/api/teams/${teamId}/members`
       // Check current team members to avoid duplicate adds (idempotent)
       try {
-        const membersRes = await fetch(teamUrl, { method: 'GET', headers })
+        const membersRes = await fetch(teamUrl, getFetchOptions(headers, 'GET'))
         const membersText = await membersRes.text().catch(() => '<no body>')
         if (membersRes.ok) {
           try {
@@ -158,7 +176,7 @@ export async function addUserToTeamByEmail(teamId: number, email: string, userna
       }
 
       info('[grafana] add user to team via POST', { teamId, userId, email, url: teamUrl })
-      const addRes = await fetch(teamUrl, { method: 'POST', headers, body: JSON.stringify({ userId, role }) })
+      const addRes = await fetch(teamUrl, getFetchOptions(headers, 'POST', JSON.stringify({ userId, role })))
       const addText = await addRes.text().catch(() => '<no body>')
       info('[grafana] add response', { teamId, userId, status: addRes.status, body: addText })
       if (!addRes.ok) {

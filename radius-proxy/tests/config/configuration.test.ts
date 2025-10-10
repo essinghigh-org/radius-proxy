@@ -21,6 +21,7 @@ describe('Configuration Management Tests', () => {
     delete process.env.CLASS_MAP;
     delete process.env.GRAFANA_URL;
     delete process.env.GRAFANA_ADMIN_TOKEN;
+    delete process.env.GRAFANA_INSECURE_TLS;
     delete process.env.REDIRECT_URIS;
     delete process.env.JWT_SECRET;
     delete process.env.DEBUG;
@@ -489,10 +490,10 @@ describe('Configuration Management Tests', () => {
         'REDIRECT_URIS',
         'OAUTH_CODE_TTL',
         'OAUTH_REFRESH_TOKEN_TTL',
+        'GRAFANA_INSECURE_TLS',
       ];
 
       requiredProps.forEach(prop => {
-        expect(config).toHaveProperty(prop);
         expect(config[prop as keyof typeof config]).toBeDefined();
       });
     });

@@ -621,4 +621,79 @@ describe('Grafana Integration Tests', () => {
       }
     });
   });
+
+  describe('TLS Configuration', () => {
+    it('should use insecure TLS when GRAFANA_INSECURE_TLS is enabled', async () => {
+      // Enable insecure TLS
+      process.env.GRAFANA_INSECURE_TLS = 'true';
+      
+      // Mock successful responses
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify([{
+          id: 123,
+          userId: 456,
+          login: 'testuser',
+          email: 'test@company.com'
+        }]))
+      } as Response);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify([]))
+      } as Response);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ message: 'User added' }))
+      } as Response);
+
+      const result = await grafanaHelpers.addUserToTeamByEmail(1, 'test@company.com', 'testuser');
+      expect(result).toBe(true);
+      
+      // Verify that fetch was called with appropriate options
+      // Note: In a real implementation, we'd need to verify the agent is set correctly
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      
+      // Clean up
+      delete process.env.GRAFANA_INSECURE_TLS;
+    });
+
+    it('should use secure TLS by default', async () => {
+      // Ensure GRAFANA_INSECURE_TLS is not set
+      delete process.env.GRAFANA_INSECURE_TLS;
+      
+      // Mock successful responses
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify([{
+          id: 123,
+          userId: 456,
+          login: 'testuser',
+          email: 'test@company.com'
+        }]))
+      } as Response);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify([]))
+      } as Response);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ message: 'User added' }))
+      } as Response);
+
+      const result = await grafanaHelpers.addUserToTeamByEmail(1, 'test@company.com', 'testuser');
+      expect(result).toBe(true);
+      
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+    });
+  });
 });

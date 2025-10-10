@@ -12,6 +12,7 @@ type Config = {
   ISSUER?: string
   GRAFANA_SA_TOKEN?: string
   GRAFANA_BASE_URL?: string
+  GRAFANA_INSECURE_TLS: boolean
   EMAIL_SUFFIX: string
   PERMITTED_CLASSES: string[]
   ADMIN_CLASSES: string[]
@@ -114,6 +115,7 @@ function loadConfig(): Config {
     ISSUER: process.env.ISSUER || base["ISSUER"],
     GRAFANA_SA_TOKEN: process.env.GRAFANA_SA_TOKEN || base["GRAFANA_SA_TOKEN"],
     GRAFANA_BASE_URL: process.env.GRAFANA_BASE_URL || base["GRAFANA_BASE_URL"],
+    GRAFANA_INSECURE_TLS: (process.env.GRAFANA_INSECURE_TLS || base["GRAFANA_INSECURE_TLS"] || 'false').toLowerCase() === 'true',
     EMAIL_SUFFIX: process.env.EMAIL_SUFFIX || base["EMAIL_SUFFIX"] || "example.local",
     PERMITTED_CLASSES: (process.env.PERMITTED_CLASSES || base["PERMITTED_CLASSES"] || '')
       .split(',')
