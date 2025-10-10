@@ -3,6 +3,7 @@
 import crypto from 'crypto';
 import dgram from 'dgram';
 import { radiusAuthenticate } from '@/lib/radius';
+import { config } from '@/lib/config';
 
 describe('RADIUS RFC 2865 - Authenticator Validation', () => {
   describe('Request Authenticator (RFC 2865 Section 3)', () => {
@@ -138,7 +139,7 @@ describe('RADIUS RFC 2865 - Authenticator Validation', () => {
       const code = Buffer.from([2]); // Access-Accept
       const id = Buffer.from([123]);
       const requestAuth = crypto.randomBytes(16);
-      const attributes = Buffer.from([25, 5, 116, 101, 115, 116]); // Class="test" 
+      const attributes = Buffer.from([config.RADIUS_ASSIGNMENT, 5, 116, 101, 115, 116]); // Class="test" (or configured attribute) 
       const secret = 'testsecret';
       const length = Buffer.alloc(2);
       length.writeUInt16BE(20 + attributes.length, 0);
@@ -272,14 +273,14 @@ function createMockRADIUSClient() {
   };
 }
 
-function createAccessAcceptResponse(requestPacket: Buffer, secret: string, classValue?: string): Buffer {
+function createAccessAcceptWithClassAuth(requestPacket: Buffer, secret: string, classValue: string | null, attributeType: number = 25): Buffer {
   const requestAuth = requestPacket.slice(4, 20);
   const id = requestPacket[1];
   
   const attributes: Buffer[] = [];
-  if (classValue) {
+  if (classValue !== null) {
     const classBuf = Buffer.from(classValue, 'utf8');
-    attributes.push(Buffer.concat([Buffer.from([25, classBuf.length + 2]), classBuf]));
+    attributes.push(Buffer.concat([Buffer.from([attributeType, classBuf.length + 2]), classBuf]));
   }
   
   const attrBuf = attributes.length ? Buffer.concat(attributes) : Buffer.alloc(0);
@@ -345,4 +346,41 @@ function decryptUserPassword(encrypted: Buffer, authenticator: Buffer, secret: s
   
   const nullIndex = decrypted.indexOf(0);
   return decrypted.slice(0, nullIndex === -1 ? decrypted.length : nullIndex).toString('utf8');
+}
+
+function createAccessAcceptResponse(requestPacket: Buffer, secret: string, classValue: string | null): Buffer {
+  const requestAuth = requestPacket.slice(4, 20);
+  const id = requestPacket[1];
+  
+  const attributes: Buffer[] = [];
+  if (classValue !== null) {
+    const classBuf = Buffer.from(classValue, 'utf8');
+    attributes.push(Buffer.concat([Buffer.from([config.RADIUS_ASSIGNMENT, classBuf.length + 2]), classBuf]));
+  }
+  
+  return buildAccessAcceptResponse(id, requestAuth, secret, attributes);
+}
+
+function buildAccessAcceptResponse(id: number, requestAuth: Buffer, secret: string, attributes: Buffer[]): Buffer {
+  const attrBuf = attributes.length ? Buffer.concat(attributes) : Buffer.alloc(0);
+  const responseLength = 20 + attrBuf.length;
+  
+  const response = Buffer.alloc(responseLength);
+  response[0] = 2; // Access-Accept
+  response[1] = id;
+  response.writeUInt16BE(responseLength, 2);
+  attrBuf.copy(response, 20);
+  
+  // Compute Response Authenticator per RFC 2865
+  const code = Buffer.from([2]);
+  const idBuf = Buffer.from([id]);
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(responseLength, 0);
+  
+  const responseAuth = crypto.createHash('md5')
+    .update(Buffer.concat([code, idBuf, length, requestAuth, attrBuf, Buffer.from(secret, 'utf8')]))
+    .digest();
+  
+  responseAuth.copy(response, 4);
+  return response;
 }

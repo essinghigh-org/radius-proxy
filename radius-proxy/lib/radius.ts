@@ -142,12 +142,61 @@ export async function radiusAuthenticate(
           
           const value = msg.slice(offset + 2, offset + l)
           
-          if (t === 25) { // Class attribute
-            const classValue = value.toString("utf8")
-            allClasses.push(classValue)
-            // Take the first Class attribute encountered per RFC 2865 implementation choice
+          // Check if this is our target attribute
+          let isTargetAttribute = false
+          let extractedValue: string | undefined = undefined
+          
+          if (t === config.RADIUS_ASSIGNMENT) {
+            if (t === 26 && config.RADIUS_VENDOR_ID !== undefined && config.RADIUS_VENDOR_TYPE !== undefined) {
+              // Vendor-Specific Attribute (VSA) parsing
+              if (value.length >= 6) {
+                const vendorId = value.readUInt32BE(0)
+                const vendorType = value.readUInt8(4)
+                const vendorLength = value.readUInt8(5)
+                
+                if (vendorId === config.RADIUS_VENDOR_ID && vendorType === config.RADIUS_VENDOR_TYPE) {
+                  const vendorValue = value.slice(6, 6 + vendorLength - 2).toString("utf8")
+                  
+                  if (config.RADIUS_VALUE_PATTERN) {
+                    // Extract value using regex pattern
+                    const regex = new RegExp(config.RADIUS_VALUE_PATTERN)
+                    const match = vendorValue.match(regex)
+                    if (match && match[1]) {
+                      extractedValue = match[1]
+                      isTargetAttribute = true
+                    }
+                  } else {
+                    // Use the full vendor value
+                    extractedValue = vendorValue
+                    isTargetAttribute = true
+                  }
+                }
+              }
+            } else {
+              // Regular attribute parsing
+              const attributeValue = value.toString("utf8")
+              
+              if (config.RADIUS_VALUE_PATTERN) {
+                // Extract value using regex pattern
+                const regex = new RegExp(config.RADIUS_VALUE_PATTERN)
+                const match = attributeValue.match(regex)
+                if (match && match[1]) {
+                  extractedValue = match[1]
+                  isTargetAttribute = true
+                }
+              } else {
+                // Use the full attribute value
+                extractedValue = attributeValue
+                isTargetAttribute = true
+              }
+            }
+          }
+          
+          if (isTargetAttribute && extractedValue !== undefined) {
+            allClasses.push(extractedValue)
+            // Take the first assignment attribute encountered per RFC 2865 implementation choice
             if (!foundClass) {
-              foundClass = classValue
+              foundClass = extractedValue
             }
           }
           

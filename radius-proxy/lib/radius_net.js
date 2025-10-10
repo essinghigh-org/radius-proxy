@@ -37,11 +37,11 @@ function buildAccessRequest({ id, authenticator, username, password, secret, nas
   return Buffer.concat([header, attrBuf])
 }
 
-function buildAccessAccept({ id, authenticator, classValue, secret }) {
+function buildAccessAccept({ id, authenticator, classValue, secret, attributeType = 25 }) {
   const attrs = []
   if (classValue) {
     const c = Buffer.from(classValue, 'utf8')
-    attrs.push(Buffer.concat([Buffer.from([25, c.length + 2]), c]))
+    attrs.push(Buffer.concat([Buffer.from([attributeType, c.length + 2]), c]))
   }
   const attrBuf = attrs.length ? Buffer.concat(attrs) : Buffer.alloc(0)
   const len = 20 + attrBuf.length
@@ -83,7 +83,7 @@ function buildAccessAccept({ id, authenticator, classValue, secret }) {
   return Buffer.concat([header, attrBuf])
 }
 
-function parseAccessResponse(msg) {
+function parseAccessResponse(msg, attributeType = 25) {
   const code = msg.readUInt8(0)
   const res = { code, class: undefined }
   if (code !== 2) return res
@@ -95,7 +95,7 @@ function parseAccessResponse(msg) {
     // ensure attribute length does not run past end of packet
     if (offset + l > msg.length) break
     const value = msg.slice(offset + 2, offset + l)
-    if (t === 25) res.class = value.toString('utf8')
+    if (t === attributeType) res.class = value.toString('utf8')
     offset += l
   }
   return res

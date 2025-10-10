@@ -11,6 +11,20 @@ REDIRECT_URIS = ["https://grafana.example.com/login/generic_oauth"]
 RADIUS_HOST = "192.168.0.191"
 RADIUS_SECRET = "testing123"
 RADIUS_TIMEOUT = 5
+# RADIUS attribute number for group assignment (default: 25 for Class attribute)
+# Examples: 25 (Class), 136 (Management-Policy-Id), 26 (Vendor-Specific)
+RADIUS_ASSIGNMENT = 25
+
+# For Cisco-AVPair (Vendor-Specific Attribute), uncomment and configure:
+# RADIUS_ASSIGNMENT = 26
+# RADIUS_VENDOR_ID = 9
+# RADIUS_VENDOR_TYPE = 1
+# RADIUS_VALUE_PATTERN = "shell:roles=([^,\s]+)"
+
+# For other vendor-specific attributes, set appropriate vendor ID and type
+# RADIUS_VENDOR_ID = <vendor_id>
+# RADIUS_VENDOR_TYPE = <vendor_type>
+# RADIUS_VALUE_PATTERN = "<regex_pattern_with_capture_group>"
 
 # Server binding
 HTTP_HOST = "0.0.0.0"

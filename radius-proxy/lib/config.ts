@@ -26,6 +26,14 @@ type Config = {
   OAUTH_REFRESH_TOKEN_TTL: number
   // RADIUS request timeout in seconds (how long to wait for RADIUS server reply)
   RADIUS_TIMEOUT: number
+  // RADIUS attribute number to use for group/class assignment (default: 25 for Class)
+  RADIUS_ASSIGNMENT: number
+  // For vendor-specific attributes (type 26), specify the vendor ID
+  RADIUS_VENDOR_ID?: number
+  // For vendor-specific attributes, specify the vendor-specific sub-type
+  RADIUS_VENDOR_TYPE?: number
+  // Pattern to extract the role/group from the attribute value (regex with capture group)
+  RADIUS_VALUE_PATTERN?: string
 }
 
 function parseTomlSimple(content: string): Record<string, string> {
@@ -129,6 +137,10 @@ function loadConfig(): Config {
     OAUTH_CODE_TTL: safeParseNumber(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"], 600),
     OAUTH_REFRESH_TOKEN_TTL: safeParseNumber(process.env.OAUTH_REFRESH_TOKEN_TTL || base["OAUTH_REFRESH_TOKEN_TTL"], 7776000), // 90 days default
     RADIUS_TIMEOUT: safeParseNumber(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"], 5),
+    RADIUS_ASSIGNMENT: safeParseNumber(process.env.RADIUS_ASSIGNMENT || base["RADIUS_ASSIGNMENT"], 25),
+    RADIUS_VENDOR_ID: process.env.RADIUS_VENDOR_ID || base["RADIUS_VENDOR_ID"] ? safeParseNumber(process.env.RADIUS_VENDOR_ID || base["RADIUS_VENDOR_ID"], 0) : undefined,
+    RADIUS_VENDOR_TYPE: process.env.RADIUS_VENDOR_TYPE || base["RADIUS_VENDOR_TYPE"] ? safeParseNumber(process.env.RADIUS_VENDOR_TYPE || base["RADIUS_VENDOR_TYPE"], 0) : undefined,
+    RADIUS_VALUE_PATTERN: process.env.RADIUS_VALUE_PATTERN || base["RADIUS_VALUE_PATTERN"],
     CLASS_MAP: (() => {
       // Accept several simple formats in config.toml for backwards compat:
       // 1) Inline TOML table-like string: CLASS_MAP = { editor_group = [2,3], admin_group = [5] }

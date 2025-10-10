@@ -2,6 +2,7 @@
 
 import crypto from 'crypto';
 import { radiusAuthenticate } from '@/lib/radius';
+import { config } from '@/lib/config';
 
 describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
   describe('Class Attribute Parsing (RFC 2865 Section 5.25)', () => {
@@ -151,14 +152,14 @@ describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
       const classValue = 'testclass';
       const classBuf = Buffer.from(classValue, 'utf8');
       
-      // Create proper Class attribute: Type=25, Length=classBuf.length+2, Value=classBuf
+      // Create proper Class attribute: Type=config.RADIUS_ASSIGNMENT, Length=classBuf.length+2, Value=classBuf
       const attribute = Buffer.alloc(classBuf.length + 2);
-      attribute[0] = 25; // Type: Class
+      attribute[0] = config.RADIUS_ASSIGNMENT; // Type: Class (or configured attribute)
       attribute[1] = classBuf.length + 2; // Length: includes type and length bytes
       classBuf.copy(attribute, 2);
       
       // Verify format
-      expect(attribute[0]).toBe(25);
+      expect(attribute[0]).toBe(config.RADIUS_ASSIGNMENT);
       expect(attribute[1]).toBe(classBuf.length + 2);
       expect(attribute.slice(2).toString('utf8')).toBe(classValue);
     });
@@ -172,13 +173,13 @@ describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
       crypto.randomBytes(16).copy(packet, 4); // Response Authenticator
       
       // Add malformed Class attribute: claims length 10 but only 5 bytes are available
-      packet[20] = 25; // Type: Class
+      packet[20] = config.RADIUS_ASSIGNMENT; // Type: Class (or configured attribute)
       packet[21] = 10; // Length: Claims 10 bytes total, but packet ends at 25
       Buffer.from('test').copy(packet, 22);
       
       // Parse should stop at invalid attribute
       const attributes = parseRADIUSAttributes(packet);
-      expect(attributes.has(25)).toBe(false);
+      expect(attributes.has(config.RADIUS_ASSIGNMENT)).toBe(false);
     });
 
     test('should handle Class attribute at packet boundary', () => {
@@ -193,12 +194,12 @@ describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
       crypto.randomBytes(16).copy(packet, 4);
       
       // Add Class attribute at end of packet
-      packet[20] = 25; // Type
+      packet[20] = config.RADIUS_ASSIGNMENT; // Type
       packet[21] = classBuf.length + 2; // Length
       classBuf.copy(packet, 22);
       
       const attributes = parseRADIUSAttributes(packet);
-      const classValues = attributes.get(25);
+      const classValues = attributes.get(config.RADIUS_ASSIGNMENT);
       expect(classValues).toBeDefined();
       expect(classValues![0].toString('utf8')).toBe(classValue);
     });
@@ -238,7 +239,7 @@ describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
       crypto.randomBytes(16).copy(packet, 4);
       
       // Add real Class attribute
-      packet[20] = 25; // Type: Class
+      packet[20] = config.RADIUS_ASSIGNMENT; // Type: Class (or configured attribute)
       packet[21] = 6; // Length
       Buffer.from('real').copy(packet, 22);
       
@@ -248,7 +249,7 @@ describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
       Buffer.from('hello').copy(packet, 28); // But secretly include fake Class bytes
       
       // Try to add another Class attribute
-      packet[34] = 25; // Type: Class
+      packet[34] = config.RADIUS_ASSIGNMENT; // Type: Class (or configured attribute)
       packet[35] = 6; // Length
       Buffer.from('fake').copy(packet, 36);
       
@@ -256,7 +257,7 @@ describe('RADIUS RFC 2865 - Class Attribute (Type 25) Compliance', () => {
       const allClasses: string[] = [];
       
       // Collect all Class attributes found
-      const classValues = attributes.get(25);
+      const classValues = attributes.get(config.RADIUS_ASSIGNMENT);
       if (classValues) {
         for (const value of classValues) {
           allClasses.push(value.toString('utf8'));
@@ -294,38 +295,38 @@ function createMockRADIUSClient() {
   };
 }
 
-function createAccessAcceptWithClass(requestPacket: Buffer, secret: string, classValue: string | null): Buffer {
+function createAccessAcceptWithClass(requestPacket: Buffer, secret: string, classValue: string | null, attributeType: number = 25): Buffer {
   const requestAuth = requestPacket.slice(4, 20);
   const id = requestPacket[1];
   
   const attributes: Buffer[] = [];
   if (classValue !== null) {
     const classBuf = Buffer.from(classValue, 'utf8');
-    attributes.push(Buffer.concat([Buffer.from([25, classBuf.length + 2]), classBuf]));
+    attributes.push(Buffer.concat([Buffer.from([attributeType, classBuf.length + 2]), classBuf]));
   }
   
   return buildAccessAcceptResponse(id, requestAuth, secret, attributes);
 }
 
-function createAccessAcceptWithMultipleClasses(requestPacket: Buffer, secret: string, classValues: string[]): Buffer {
+function createAccessAcceptWithMultipleClasses(requestPacket: Buffer, secret: string, classValues: string[], attributeType: number = 25): Buffer {
   const requestAuth = requestPacket.slice(4, 20);
   const id = requestPacket[1];
   
   const attributes: Buffer[] = [];
   for (const classValue of classValues) {
     const classBuf = Buffer.from(classValue, 'utf8');
-    attributes.push(Buffer.concat([Buffer.from([25, classBuf.length + 2]), classBuf]));
+    attributes.push(Buffer.concat([Buffer.from([attributeType, classBuf.length + 2]), classBuf]));
   }
   
   return buildAccessAcceptResponse(id, requestAuth, secret, attributes);
 }
 
-function createAccessAcceptWithBinaryClass(requestPacket: Buffer, secret: string, binaryClass: Buffer): Buffer {
+function createAccessAcceptWithBinaryClass(requestPacket: Buffer, secret: string, binaryClass: Buffer, attributeType: number = 25): Buffer {
   const requestAuth = requestPacket.slice(4, 20);
   const id = requestPacket[1];
   
   const attributes: Buffer[] = [];
-  attributes.push(Buffer.concat([Buffer.from([25, binaryClass.length + 2]), binaryClass]));
+  attributes.push(Buffer.concat([Buffer.from([attributeType, binaryClass.length + 2]), binaryClass]));
   
   return buildAccessAcceptResponse(id, requestAuth, secret, attributes);
 }
