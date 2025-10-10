@@ -1,23 +1,27 @@
 import { config } from './config'
 import { warn, error, info } from './log'
-import https from 'https'
 
 // Create a custom fetch function that handles TLS configuration
 async function customFetch(url: string, options: RequestInit = {}): Promise<Response> {
   if (config.GRAFANA_INSECURE_TLS && url.startsWith('https://')) {
-    // For HTTPS URLs when TLS verification is disabled, use a custom agent
-    const agent = new https.Agent({
-      rejectUnauthorized: false
-    })
+    // Store the original NODE_TLS_REJECT_UNAUTHORIZED value
+    const originalTLSReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED
     
-    // Create options with the custom agent
-    const fetchOptions = {
-      ...options,
-      agent: agent
+    try {
+      // Temporarily disable TLS verification for this request
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+      info('[grafana] Temporarily disabling TLS verification for HTTPS request', { url: url.substring(0, 50) + '...' })
+      
+      const response = await fetch(url, options)
+      return response
+    } finally {
+      // Always restore the original value
+      if (originalTLSReject !== undefined) {
+        process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTLSReject
+      } else {
+        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
+      }
     }
-    
-    info('[grafana] Using insecure TLS agent for HTTPS request', { url: url.substring(0, 50) + '...' })
-    return fetch(url, fetchOptions)
   }
   
   // For HTTP URLs or when TLS verification is enabled, use regular fetch

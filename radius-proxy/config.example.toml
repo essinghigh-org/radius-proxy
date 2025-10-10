@@ -39,6 +39,10 @@ ADMIN_CLASSES = "admin_group"
 # Team Mapping: map RADIUS class/group names to Grafana team IDs
 GRAFANA_BASE_URL = "https://grafana.example.com"
 GRAFANA_SA_TOKEN = "glsa_xyzabc123"
+# Disable TLS certificate verification for Grafana API calls
+# Set to true if using internal/self-signed certificates (e.g., internal enterprise CA)
+# This temporarily disables certificate verification only during Grafana API requests
+# ⚠️  WARNING: Only use in trusted networks! This disables certificate verification.
 GRAFANA_INSECURE_TLS = false
 CLASS_MAP = {
     example_class = [2,6],
