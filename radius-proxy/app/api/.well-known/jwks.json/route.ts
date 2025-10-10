@@ -25,11 +25,10 @@ export async function GET() {
         const mod = await import('@/lib/log')
         // use structured logging; store message and short error text
         mod.error('[jwks] failed to generate JWK', { err: (err as Error).message })
-      } catch (e) {
+      } catch {
         // If dynamic import fails for any reason, fall back to a concise console error
         // so the message still appears prominently in developer consoles.
-  // eslint-disable-next-line no-console
-  console.error('[radius-proxy][jwks] failed to generate JWK', (err as Error).message)
+        console.error('[radius-proxy][jwks] failed to generate JWK', (err as Error).message)
       }
       return NextResponse.json(
         { keys: [] },

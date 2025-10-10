@@ -37,7 +37,7 @@ function getFetchOptions(headers: Record<string, string>, method: string, body?:
     const agent = new https.Agent({
       rejectUnauthorized: false
     })
-    // @ts-ignore - Node.js specific fetch option
+    // @ts-expect-error - Node.js specific fetch option
     options.agent = agent
   }
   
