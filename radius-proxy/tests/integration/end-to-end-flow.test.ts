@@ -1,5 +1,4 @@
 // End-to-End Integration Flow Tests
-// Nyaa~ Testing the complete RADIUS auth -> OAuth -> JWT flow like a purr-fect choreographed dance! 😺💕
 
 import { POST as authorizePost } from '@/app/api/oauth/authorize/route';
 import { POST as tokenPost } from '@/app/api/oauth/token/route';

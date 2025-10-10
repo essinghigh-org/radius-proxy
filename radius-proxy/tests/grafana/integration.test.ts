@@ -1,5 +1,4 @@
 // Grafana Integration Tests
-// Nyaa~ Testing Grafana team mapping like a maid organizing the master's Grafana teams! 😺👥💕
 
 import grafanaHelpers from '@/lib/grafana';
 

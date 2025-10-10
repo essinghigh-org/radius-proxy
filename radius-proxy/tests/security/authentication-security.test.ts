@@ -1,5 +1,4 @@
 // Security Compliance Tests
-// Nyaa~ Testing security protections like a vigilant maid guarding the master's precious data! 😺🔒💕
 
 import { POST as authorizePost } from '@/app/api/oauth/authorize/route';
 import { POST as tokenPost } from '@/app/api/oauth/token/route';

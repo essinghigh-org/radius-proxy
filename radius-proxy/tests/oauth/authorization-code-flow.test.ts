@@ -1,5 +1,4 @@
 // OAuth2 RFC 6749 Authorization Code Flow Compliance Tests
-// Nyaa~ Testing that our OAuth2 implementation is purr-fectly compliant with RFC 6749! 😺💕
 
 import { POST as authorizePost, GET as authorizeGet } from '@/app/api/oauth/authorize/route';
 import { POST as tokenPost } from '@/app/api/oauth/token/route';

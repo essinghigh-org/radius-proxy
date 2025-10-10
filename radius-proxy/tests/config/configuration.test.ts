@@ -1,5 +1,4 @@
 // Configuration Hot-Reload and Validation Tests
-// Nyaa~ Testing config management like a maid organizing the master's precious settings! 😺📋💕
 
 import { config, _invalidateConfigCache } from '@/lib/config';
 

@@ -1,5 +1,4 @@
 // RADIUS RFC 2865 Authenticator Validation Tests  
-// Nyaa~ Testing that authenticator validation is purr-fectly secure per RFC 2865! 😺🔐
 
 import crypto from 'crypto';
 import dgram from 'dgram';

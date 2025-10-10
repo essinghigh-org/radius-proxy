@@ -1,5 +1,4 @@
 // RADIUS Class Attribute (Type 25) Parsing Tests
-// Nyaa~ Testing that Class attribute parsing is purr-fectly compliant with RFC 2865! 😺💕
 
 import crypto from 'crypto';
 import { radiusAuthenticate } from '@/lib/radius';

@@ -1,5 +1,4 @@
 // Jest setup file for radius-proxy tests 
-// Nyaa~ Setting up the purr-fect testing environment for Master! 😺💕
 
 import * as crypto from 'crypto';
 

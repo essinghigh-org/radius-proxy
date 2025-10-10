@@ -45,3 +45,4 @@ config.toml
 next-env.d.ts
 
 .*/
+!.well-known/

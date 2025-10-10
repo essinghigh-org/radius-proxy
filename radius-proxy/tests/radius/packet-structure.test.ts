@@ -1,5 +1,4 @@
 // RADIUS RFC 2865 Packet Structure Compliance Tests
-// Nyaa~ Testing that our RADIUS packets are purr-fectly compliant with RFC 2865! 😺💕
 
 import crypto from 'crypto';
 import { radiusAuthenticate } from '@/lib/radius';
