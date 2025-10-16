@@ -1,5 +1,6 @@
 import fs from "fs"
 import path from "path"
+import { findProjectRoot } from "./utils"
 
 type Config = {
   OAUTH_CLIENT_ID: string
@@ -78,11 +79,11 @@ function safeParseNumber(value: string | undefined, fallback: number): number {
 }
 
 function loadConfig(): Config {
-  const root = process.cwd()
+  const root = findProjectRoot()
   const cfgPath = path.join(root, "config.toml")
   const exampleCfgPath = path.join(root, "config.example.toml")
   let base: Record<string, string> = {}
-  
+
   // For tests, always use config.example.toml
   let cfgFile = ""
   if (process.env.NODE_ENV === 'test') {
@@ -97,7 +98,7 @@ function loadConfig(): Config {
       cfgFile = exampleCfgPath
     }
   }
-  
+
   if (cfgFile) {
     const content = fs.readFileSync(cfgFile, "utf8")
     base = parseTomlSimple(content)
@@ -119,11 +120,11 @@ function loadConfig(): Config {
     EMAIL_SUFFIX: process.env.EMAIL_SUFFIX || base["EMAIL_SUFFIX"] || "example.local",
     PERMITTED_CLASSES: (process.env.PERMITTED_CLASSES || base["PERMITTED_CLASSES"] || '')
       .split(',')
-      .map(s=>s.trim())
+      .map(s => s.trim())
       .filter(Boolean),
     ADMIN_CLASSES: (process.env.ADMIN_CLASSES || base["ADMIN_CLASSES"] || '')
       .split(',')
-      .map(s=>s.trim())
+      .map(s => s.trim())
       .filter(Boolean),
     REDIRECT_URIS: (() => {
       // Accept either a simple comma-separated string OR a TOML array literal like:
@@ -161,7 +162,7 @@ function loadConfig(): Config {
             const v = j[k]
             if (Array.isArray(v)) out[k] = v.map(n => Number(n)).filter(n => !Number.isNaN(n))
             else if (typeof v === 'number') out[k] = [Number(v)]
-            else if (typeof v === 'string') out[k] = v.split(/[;,]/).map(s=>Number(s.trim())).filter(n=>!Number.isNaN(n))
+            else if (typeof v === 'string') out[k] = v.split(/[;,]/).map(s => Number(s.trim())).filter(n => !Number.isNaN(n))
           }
           return out
         }
@@ -178,11 +179,11 @@ function loadConfig(): Config {
           const eq = p.indexOf('=')
           if (eq === -1) continue
           const key = p.slice(0, eq).trim().replace(/^"|"$/g, '')
-          const val = p.slice(eq+1).trim()
+          const val = p.slice(eq + 1).trim()
           let nums: number[] = []
           if (val.startsWith('[') && val.endsWith(']')) {
             const innerArr = val.slice(1, -1)
-            nums = innerArr.split(',').map(s=>Number(s.trim())).filter(n=>!Number.isNaN(n))
+            nums = innerArr.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n))
           } else {
             // single number
             const n = Number(val.replace(/"/g, '').trim())
@@ -203,7 +204,7 @@ function loadConfig(): Config {
       while ((m = keyValRe.exec(simple)) !== null) {
         const key = m[1]
         const rest = m[2]
-        const nums = rest.split(',').map(s=>Number(s.trim())).filter(n=>!Number.isNaN(n))
+        const nums = rest.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n))
         if (key) out[key] = nums
       }
       return out
@@ -211,7 +212,7 @@ function loadConfig(): Config {
   }
   return cfg
 }
- 
+
 // Dynamic cached config: reload from disk when config.toml (or config.example.toml)
 // changes so runtime consumers (imports using `config.*`) pick up updates without
 // restarting the server.
@@ -219,11 +220,11 @@ let _cachedConfig: Config | null = null
 let _cachedMtime = 0
 
 function getConfig(): Config {
-  const root = process.cwd()
+  const root = findProjectRoot()
   const cfgPath = path.join(root, "config.toml")
   const exampleCfgPath = path.join(root, "config.example.toml")
   let watchPath: string | null = null
-  
+
   if (process.env.NODE_ENV === 'test') {
     if (fs.existsSync(exampleCfgPath)) watchPath = exampleCfgPath
   } else {
@@ -269,19 +270,19 @@ export function _invalidateConfigCache() {
 // near-real-time config updates without requiring a server restart; the
 // mtime-based check in getConfig() remains as a fallback for environments
 // where fs.watch isn't reliable.
-;(function initConfigWatcher() {
+; (function initConfigWatcher() {
   try {
-    const root = process.cwd()
+    const root = findProjectRoot()
     const cfgPath = path.join(root, "config.toml")
     const exampleCfgPath = path.join(root, "config.example.toml")
-    
+
     let watchPath: string | null = null
     if (process.env.NODE_ENV === 'test') {
       watchPath = fs.existsSync(exampleCfgPath) ? exampleCfgPath : null
     } else {
       watchPath = fs.existsSync(cfgPath) ? cfgPath : (fs.existsSync(exampleCfgPath) ? exampleCfgPath : null)
     }
-    
+
     if (!watchPath) return
     try {
       fs.watch(watchPath, { persistent: false }, () => {

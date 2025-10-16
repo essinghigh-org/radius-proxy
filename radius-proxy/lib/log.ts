@@ -1,12 +1,13 @@
 import fs from 'fs'
 import path from 'path'
+import { findProjectRoot } from './utils'
 
 // Consider the runtime development mode: file logging and verbose console output
 // should be enabled in development, but disabled for the built/production app.
 export const DEBUG_ENABLED = Boolean(process.env.DEBUG) || process.env.NODE_ENV !== 'production'
 const IS_DEV = process.env.NODE_ENV !== 'production'
 
-const LOG_DIR = path.join(process.cwd(), '.logs')
+const LOG_DIR = path.join(findProjectRoot(), '.logs')
 // Use debug.log for verbose development logs
 const LOG_FILE = path.join(LOG_DIR, 'debug.log')
 // Legacy filename that older versions used; we'll remove it on dev startup.
@@ -139,10 +140,10 @@ function appendLog(level: string, args: unknown[]) {
       args: args.map(serializeStructured),
       cwd: process.cwd()
     }
-  // Write pretty-printed JSON blocks separated by a blank line so the
-  // logfile is easy to read during development. Keep one JSON object per
-  // event (multi-line) to help manual inspection.
-  fs.appendFileSync(LOG_FILE, JSON.stringify(entry, null, 2) + '\n\n')
+    // Write pretty-printed JSON blocks separated by a blank line so the
+    // logfile is easy to read during development. Keep one JSON object per
+    // event (multi-line) to help manual inspection.
+    fs.appendFileSync(LOG_FILE, JSON.stringify(entry, null, 2) + '\n\n')
   } catch {
     // ignore logging failures; we must never crash the app for logging
   }

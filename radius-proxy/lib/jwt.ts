@@ -4,12 +4,13 @@ import path from "path"
 import crypto from "crypto"
 import jwt from "jsonwebtoken"
 import { error, warn } from "@/lib/log"
+import { findProjectRoot } from "./utils"
 
 type RSKeyInfo = { algo: "RS256"; privateKey: string; publicKey: string; kid: string }
 type HSKeyInfo = { algo: "HS256"; secret: string }
 type KeyInfo = RSKeyInfo | HSKeyInfo
 
-const KEY_DIR = path.resolve(process.cwd(), ".keys")
+const KEY_DIR = path.resolve(findProjectRoot(), ".keys")
 const HMAC_PATH = path.join(KEY_DIR, "jwt.hmac")
 
 function ensureKeyDir() {
