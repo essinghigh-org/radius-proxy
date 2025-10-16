@@ -2,6 +2,7 @@ import { info, warn } from './log'
 
 export interface OAuthCodeEntry {
   username: string
+  emailDomain?: string
   class?: string
   scope?: string
   groups?: string[]
@@ -12,6 +13,7 @@ export interface OAuthCodeEntry {
 
 export interface RefreshTokenEntry {
   username: string
+  emailDomain?: string
   class?: string
   scope?: string
   groups?: string[]
@@ -24,7 +26,7 @@ export interface StorageBackend {
   get(code: string): Promise<OAuthCodeEntry | undefined>
   delete(code: string): Promise<void>
   cleanup(): Promise<void>
-  
+
   // Refresh token methods
   setRefreshToken(token: string, entry: RefreshTokenEntry): Promise<void>
   getRefreshToken(token: string): Promise<RefreshTokenEntry | undefined>

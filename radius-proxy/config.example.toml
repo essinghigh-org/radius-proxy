@@ -32,8 +32,8 @@ HTTP_PORT = 54567
 ISSUER = "https://auth.example.com"
 
 # User Configuration
-EMAIL_SUFFIX = "example.com"
-PERMITTED_CLASSES = "admin_group,editor_group"
+EMAIL_SUFFIX = "example.local"
+PERMITTED_CLASSES = "admin_group,editor_group,user_group"
 ADMIN_CLASSES = "admin_group"
 
 # Team Mapping: map RADIUS class/group names to Grafana team IDs

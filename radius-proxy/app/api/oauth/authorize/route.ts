@@ -63,8 +63,18 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const body = await req.formData()
-  const username = String(body.get("user") || "")
+  const rawUsername = String(body.get("user") || "")
   const password = String(body.get("password") || "")
+
+  // Extract email domain if present, sanitize username
+  let username = rawUsername
+  let emailDomain = config.EMAIL_SUFFIX
+
+  if (rawUsername.includes('@')) {
+    const parts = rawUsername.split('@')
+    username = parts[0] // Use part before @ as the actual username
+    emailDomain = parts[1] // Use part after @ as the email domain
+  }
   const _client_id = String(body.get("client_id") || "grafana")
   const redirect_uri = String(body.get('redirect_uri') || '')
   const state = String(body.get('state') || '')
@@ -99,10 +109,10 @@ export async function POST(req: Request) {
 
   let res
   try {
-  const radiusPort = Number(config.RADIUS_PORT || 1812)
-  // Convert configured timeout (seconds) to milliseconds for radius client
-  const radiusTimeoutMs = Math.max(0, Number(config.RADIUS_TIMEOUT || 5)) * 1000
-  res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password, radiusTimeoutMs, radiusPort)
+    const radiusPort = Number(config.RADIUS_PORT || 1812)
+    // Convert configured timeout (seconds) to milliseconds for radius client
+    const radiusTimeoutMs = Math.max(0, Number(config.RADIUS_TIMEOUT || 5)) * 1000
+    res = await radiusAuthenticate(RADIUS_HOST, RADIUS_SECRET, username, password, radiusTimeoutMs, radiusPort)
   } catch (e) {
     error('[authorize] radius exception', { err: (e as Error).message })
     if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
@@ -124,10 +134,10 @@ export async function POST(req: Request) {
   // Generate a cryptographically unguessable one-time code and expiry.
   const code = crypto.randomBytes(24).toString("base64url")
   const expiresAt = Date.now() + (Number(config.OAUTH_CODE_TTL || 300) * 1000)
-  
+
   // Use the storage abstraction layer
   const storage = getStorage()
-  
+
   // Clean up expired codes periodically (non-blocking)
   cleanupExpiredCodes().catch(err => {
     warn('[authorize] Failed to cleanup expired codes', { error: err.message })
@@ -138,20 +148,21 @@ export async function POST(req: Request) {
   function deriveGroups(classAttr?: string): string[] {
     if (!classAttr) return []
     // Only pass through the raw RADIUS class tokens (split on ; or ,)
-    return classAttr.split(/[;,]/).map(p=>p.trim()).filter(Boolean)
+    return classAttr.split(/[;,]/).map(p => p.trim()).filter(Boolean)
   }
   const groups = deriveGroups(res.class);
-  
+
   try {
-    await storage.set(code, { 
-      username: username, 
-      class: res.class, 
-      scope: scope, 
-      groups: groups, 
+    await storage.set(code, {
+      username: username,
+      emailDomain: emailDomain,
+      class: res.class,
+      scope: scope,
+      groups: groups,
       // store PKCE challenge if provided (per RFC7636)
       code_challenge: code_challenge || undefined,
       code_challenge_method: code_challenge_method || undefined,
-      expiresAt: expiresAt 
+      expiresAt: expiresAt
     })
     if (code_challenge) {
       const msg = { user: username, code: code, method: code_challenge_method || 'plain' }
@@ -170,10 +181,10 @@ export async function POST(req: Request) {
   if (redirect_uri && !accept) {
     try {
       const out = new URL(redirect_uri)
-      
+
       // Validate redirect against configured allowlist or same-origin policy
       const allowed = Array.isArray(config.REDIRECT_URIS) ? config.REDIRECT_URIS : []
-      
+
       let isAllowed = false
       if (allowed.length > 0) {
         // When allowlist is configured, require exact match
@@ -181,34 +192,34 @@ export async function POST(req: Request) {
       } else {
         // Enhanced same-origin validation to prevent open redirect attacks
         const expectedOrigin = new URL(origin)
-        
+
         // Strict validation: protocol, hostname, and port must match exactly
         const isValidProtocol = out.protocol === expectedOrigin.protocol
         const isValidHostname = out.hostname === expectedOrigin.hostname
         const isValidPort = out.port === expectedOrigin.port
-        
+
         // Additional security checks to prevent bypass techniques
         const hasNoUserInfo = !out.username && !out.password // Prevent user:pass@host tricks  
         const authorityPart = redirect_uri.split('://')[1]?.split('/')[0] || '' // Extract authority (host:port) part
         const hasNoAtInAuthority = !authorityPart.includes('@') // Prevent user@host tricks in authority
         const isNotDataOrJavascriptScheme = !['javascript:', 'data:', 'file:', 'ftp:'].some(scheme => redirect_uri.toLowerCase().startsWith(scheme))
-        
+
         // Prevent phishing by blocking suspicious domain names anywhere in the URL
         const suspiciousDomains = ['evil.com', 'attacker.com', 'phishing.com', 'malicious.com']
         const hasNoSuspiciousDomains = !suspiciousDomains.some(domain => redirect_uri.toLowerCase().includes(domain))
-        
+
         isAllowed = isValidProtocol && isValidHostname && isValidPort && hasNoUserInfo && hasNoAtInAuthority && isNotDataOrJavascriptScheme && hasNoSuspiciousDomains
       }
-      
+
       if (!isAllowed) {
         error('[authorize] redirect_uri not allowed', { redirect_uri })
         return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, '', state, 'invalid_request', 'redirect_uri not allowed'), { status: 302 }))
       }
-      
+
       out.searchParams.set('code', code)
       if (state) out.searchParams.set('state', state)
-  const successMsg = { user: username, class: res.class, ms: Date.now() - start }
-  info('[authorize] success', successMsg)
+      const successMsg = { user: username, class: res.class, ms: Date.now() - start }
+      info('[authorize] success', successMsg)
       return addSecurityHeaders(NextResponse.redirect(out.toString(), { status: 302 }))
     } catch (e) {
       error('[authorize] invalid redirect_uri', { redirect_uri, err: (e as Error).message })
