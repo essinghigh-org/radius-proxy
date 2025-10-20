@@ -1,11 +1,16 @@
 import fs from "fs"
 import path from "path"
-import { findProjectRoot } from "./utils"
+import { findProjectRoot } from "./server-utils"
 
 type Config = {
   OAUTH_CLIENT_ID: string
   OAUTH_CLIENT_SECRET: string
+  // Primary (legacy) single host. If multiple hosts are configured via RADIUS_HOSTS
+  // or RADIUS_HOST as an array, the first host becomes initial active candidate.
   RADIUS_HOST: string
+  // New: explicit ordered list of hosts. If absent we derive from RADIUS_HOST supporting
+  // comma separated or TOML array formats for backwards compatibility.
+  RADIUS_HOSTS?: string[]
   RADIUS_SECRET: string
   RADIUS_PORT: number
   HTTP_HOST: string
@@ -28,6 +33,13 @@ type Config = {
   OAUTH_REFRESH_TOKEN_TTL: number
   // RADIUS request timeout in seconds (how long to wait for RADIUS server reply)
   RADIUS_TIMEOUT: number
+  // Health check interval in seconds (default 1800 = 30m)
+  RADIUS_HEALTHCHECK_INTERVAL: number
+  // Health check per-host timeout in seconds (default 5s) distinct from auth timeout
+  RADIUS_HEALTHCHECK_TIMEOUT: number
+  // Credentials used for health check probe (dummy user/password)
+  RADIUS_HEALTHCHECK_USER?: string
+  RADIUS_HEALTHCHECK_PASSWORD?: string
   // RADIUS attribute number to use for group/class assignment (default: 25 for Class)
   RADIUS_ASSIGNMENT: number
   // For vendor-specific attributes (type 26), specify the vendor ID
@@ -108,7 +120,54 @@ function loadConfig(): Config {
   const cfg: Config = {
     OAUTH_CLIENT_ID: process.env.OAUTH_CLIENT_ID || base["OAUTH_CLIENT_ID"] || "grafana",
     OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "secret",
-    RADIUS_HOST: process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1",
+    RADIUS_HOST: (() => {
+      // Legacy single host or first element from array-like value
+      const raw = process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1"
+      const trimmed = raw.trim()
+      // TOML array format
+      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+        const inner = trimmed.slice(1, -1)
+        const hosts = inner.split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean)
+        return hosts[0] || '127.0.0.1'
+      }
+      // Comma separated list
+      if (trimmed.includes(',')) {
+        const hosts = trimmed.split(',').map(s => s.trim()).filter(Boolean)
+        return hosts[0] || '127.0.0.1'
+      }
+      return trimmed || '127.0.0.1'
+    })(),
+    RADIUS_HOSTS: (() => {
+      // New explicit list: prefer RADIUS_HOSTS env, fallback to TOML key, then derive from RADIUS_HOST if list-like
+      const rawList = process.env.RADIUS_HOSTS || base['RADIUS_HOSTS'] || ''
+      const out: string[] = []
+      const collect = (raw: string) => {
+        const t = raw.trim()
+        if (!t) return
+        if (t.startsWith('[') && t.endsWith(']')) {
+          const inner = t.slice(1, -1)
+          inner.split(',').forEach(seg => {
+            const h = seg.trim().replace(/^"|"$/g, '')
+            if (h) out.push(h)
+          })
+          return
+        }
+        // Allow space or comma separated
+        t.split(/[,\s]+/).forEach(seg => { const h = seg.trim(); if (h) out.push(h) })
+      }
+      if (rawList) collect(rawList)
+      else {
+        const rhRaw = process.env.RADIUS_HOST || base['RADIUS_HOST'] || ''
+        // If legacy RADIUS_HOST has array/comma syntax, derive full list
+        if (rhRaw && (rhRaw.includes(',') || (rhRaw.trim().startsWith('[') && rhRaw.trim().endsWith(']')))) {
+          collect(rhRaw)
+        }
+      }
+      // Ensure uniqueness and preserve order
+      const dedup: string[] = []
+      for (const h of out) { if (!dedup.includes(h)) dedup.push(h) }
+      return dedup.length ? dedup : [process.env.RADIUS_HOST || base['RADIUS_HOST'] || '127.0.0.1']
+    })(),
     RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
     RADIUS_PORT: safeParseNumber(process.env.RADIUS_PORT || base["RADIUS_PORT"], 1812),
     HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
@@ -140,6 +199,10 @@ function loadConfig(): Config {
     OAUTH_CODE_TTL: safeParseNumber(process.env.OAUTH_CODE_TTL || base["OAUTH_CODE_TTL"], 600),
     OAUTH_REFRESH_TOKEN_TTL: safeParseNumber(process.env.OAUTH_REFRESH_TOKEN_TTL || base["OAUTH_REFRESH_TOKEN_TTL"], 7776000), // 90 days default
     RADIUS_TIMEOUT: safeParseNumber(process.env.RADIUS_TIMEOUT || base["RADIUS_TIMEOUT"], 5),
+    RADIUS_HEALTHCHECK_INTERVAL: safeParseNumber(process.env.RADIUS_HEALTHCHECK_INTERVAL || base['RADIUS_HEALTHCHECK_INTERVAL'], 1800),
+    RADIUS_HEALTHCHECK_TIMEOUT: safeParseNumber(process.env.RADIUS_HEALTHCHECK_TIMEOUT || base['RADIUS_HEALTHCHECK_TIMEOUT'], 5),
+    RADIUS_HEALTHCHECK_USER: process.env.RADIUS_HEALTHCHECK_USER || base['RADIUS_HEALTHCHECK_USER'] || 'grafana_dummy_user',
+    RADIUS_HEALTHCHECK_PASSWORD: process.env.RADIUS_HEALTHCHECK_PASSWORD || base['RADIUS_HEALTHCHECK_PASSWORD'] || 'dummy_password',
     RADIUS_ASSIGNMENT: safeParseNumber(process.env.RADIUS_ASSIGNMENT || base["RADIUS_ASSIGNMENT"], 25),
     RADIUS_VENDOR_ID: process.env.RADIUS_VENDOR_ID || base["RADIUS_VENDOR_ID"] ? safeParseNumber(process.env.RADIUS_VENDOR_ID || base["RADIUS_VENDOR_ID"], 0) : undefined,
     RADIUS_VENDOR_TYPE: process.env.RADIUS_VENDOR_TYPE || base["RADIUS_VENDOR_TYPE"] ? safeParseNumber(process.env.RADIUS_VENDOR_TYPE || base["RADIUS_VENDOR_TYPE"], 0) : undefined,

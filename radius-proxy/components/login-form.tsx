@@ -26,35 +26,35 @@ export function LoginForm({ className, clientId, redirectUri, state, error, erro
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
     if (isSubmitting) return;
-    
+
     setIsSubmitting(true);
-      timeoutRef.current = setTimeout(() => {
-          toastId.current = toast.loading("Check your phone for an MFA prompt!", {
-            duration: Infinity,
-          });
-      }, 2000);
+    timeoutRef.current = setTimeout(() => {
+      toastId.current = toast.loading("Check your phone for an MFA prompt!", {
+        duration: Infinity,
+      });
+    }, 2000);
 
     try {
       const formData = new FormData(e.currentTarget);
-      
+
       const response = await fetch(formAction, {
         method: 'POST',
         body: formData
       });
-      
+
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      
+
       // Dismiss the MFA toast if it was shown
       if (toastId.current) {
         toast.dismiss(toastId.current);
         toastId.current = null;
       }
-      
+
       if (response.redirected) {
         // Follow the redirect
         window.location.href = response.url;
@@ -63,7 +63,7 @@ export function LoginForm({ className, clientId, redirectUri, state, error, erro
         const responseText = await response.text();
         const errorMatch = responseText.match(/error=([^&]+)/);
         const descMatch = responseText.match(/error_description=([^&]+)/);
-        
+
         if (errorMatch) {
           toast.error("Authentication failed", {
             description: descMatch ? decodeURIComponent(descMatch[1]) : "Please check your credentials"
@@ -74,18 +74,18 @@ export function LoginForm({ className, clientId, redirectUri, state, error, erro
           });
         }
       }
-    } catch (err) {
+    } catch {
       // Clear timeout on error
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      
+
       if (toastId.current) {
         toast.dismiss(toastId.current);
         toastId.current = null;
       }
-      
+
       toast.error("Connection failed", {
         description: "Unable to connect to the authentication server"
       });

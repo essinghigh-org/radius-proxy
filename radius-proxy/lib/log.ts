@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { findProjectRoot } from './utils'
+import { findProjectRoot } from './server-utils'
 
 // Consider the runtime development mode: file logging and verbose console output
 // should be enabled in development, but disabled for the built/production app.

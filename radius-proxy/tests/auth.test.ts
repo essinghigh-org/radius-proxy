@@ -12,29 +12,36 @@ import { getStorage, closeStorage } from "@/lib/storage";
 import { config, _invalidateConfigCache } from "@/lib/config";
 import { signToken } from "@/lib/jwt";
 
-// Mock radius authentication
+// Mock radius authentication supporting both legacy and new signatures
 mock.module("@/lib/radius", () => ({
-  radiusAuthenticate: async (
-    host: string,
-    secret: string,
-    username: string,
-    password: string
-  ) => {
+  radiusAuthenticate: async (...args: any[]) => {
+    // New signature: (username, password, timeout?)
+    // Legacy signature: (host, secret, username, password, timeout?, port?)
+    let username: string
+    let password: string
+    if (args.length >= 4 && typeof args[2] === 'string' && typeof args[3] === 'string') {
+      // Legacy
+      username = args[2]
+      password = args[3]
+    } else {
+      username = args[0]
+      password = args[1]
+    }
     if (username === "testuser" && password === "testpass") {
-      return { ok: true, class: "admin_group" };
+      return { ok: true, class: "admin_group" }
     }
     if (username === "editor" && password === "editorpass") {
-      return { ok: true, class: "editor_group" };
+      return { ok: true, class: "editor_group" }
     }
     if (username === "forbidden" && password === "forbiddenpass") {
-      return { ok: true, class: "forbidden_group" };
+      return { ok: true, class: "forbidden_group" }
     }
     if (username === "emailuser" && password === "emailpass") {
-      return { ok: true, class: "user_group" };
+      return { ok: true, class: "user_group" }
     }
-    return { ok: false };
-  },
-}));
+    return { ok: false }
+  }
+}))
 
 describe("Authentication Flow", () => {
   beforeEach(async () => {

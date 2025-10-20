@@ -1,8 +1,9 @@
 import dgram from "dgram"
 import crypto from "crypto"
-import { warn } from "@/lib/log"
+import { warn, debug } from "@/lib/log"
 import { config } from "@/lib/config"
- 
+import { getActiveRadiusHost, notifyAuthTimeout } from "@/lib/radius_hosts"
+
 // Minimal RADIUS client using UDP for Access-Request/Accept exchange.
 // This is intentionally small and supports only PAP (User-Password) and Class attribute extraction.
 
@@ -13,13 +14,43 @@ export interface RadiusResult {
 }
 
 export async function radiusAuthenticate(
-  host: string,
-  secret: string,
-  username: string,
-  password: string,
-  timeout?: number,
-  port = 1812
+  hostOrUsername: string,
+  maybeSecretOrPassword: string,
+  maybeUsernameOrTimeout?: string | number,
+  maybePassword?: string,
+  maybeTimeoutMs?: number,
+  maybePort = 1812
 ): Promise<RadiusResult> {
+  // Backwards-compatible argument handling:
+  // Previous signature: (host, secret, username, password, timeoutMs, port)
+  // New preferred signature: (username, password, timeoutMs?) using active host + configured secret
+  let host: string
+  let secret: string
+  let username: string
+  let password: string
+  let timeoutMs: number | undefined
+  let port: number
+
+  if (typeof maybeUsernameOrTimeout === 'string' && typeof maybePassword === 'string') {
+    // Legacy style call with explicit host & secret
+    host = hostOrUsername
+    secret = maybeSecretOrPassword
+    username = maybeUsernameOrTimeout
+    password = maybePassword
+    timeoutMs = typeof maybeTimeoutMs === 'number' ? maybeTimeoutMs : undefined
+    port = maybePort
+  } else {
+    // New style: first two params are username/password
+    host = getActiveRadiusHost()
+    secret = config.RADIUS_SECRET
+    username = hostOrUsername
+    password = maybeSecretOrPassword
+    timeoutMs = typeof maybeUsernameOrTimeout === 'number' ? maybeUsernameOrTimeout : undefined
+    port = typeof maybePassword === 'number' ? maybePassword : (typeof maybeTimeoutMs === 'number' ? maybeTimeoutMs : (typeof maybePort === 'number' ? maybePort : 1812))
+    // If ambiguous, fallback to configured port
+    if (typeof port !== 'number' || Number.isNaN(port)) port = Number(config.RADIUS_PORT || 1812)
+  }
+  debug('[radius] authenticate start', { host, user: username })
   return new Promise((resolve, reject) => {
     const client = dgram.createSocket("udp4")
     const id = crypto.randomBytes(1)[0]
@@ -48,7 +79,7 @@ export async function radiusAuthenticate(
       prev = xored.slice(b * 16, b * 16 + 16)
     }
     attrs.push(Buffer.concat([Buffer.from([2, xored.length + 2]), xored]))
- 
+
     // NAS-IP-Address (type 4) - optional, set to 127.0.0.1
     const nasIp = Buffer.from([127, 0, 0, 1])
     attrs.push(Buffer.concat([Buffer.from([4, 6]), nasIp]))
@@ -71,12 +102,14 @@ export async function radiusAuthenticate(
     // Determine effective timeout in milliseconds. If caller provided a numeric
     // timeout, use it directly (assumed to be milliseconds). Otherwise fall back
     // to configured `RADIUS_TIMEOUT` (seconds) from config, defaulting to 5s.
-    const effectiveTimeoutMs = typeof timeout === 'number'
-      ? timeout
+    const effectiveTimeoutMs = typeof timeoutMs === 'number'
+      ? timeoutMs
       : (Number(config.RADIUS_TIMEOUT || 5) * 1000)
 
     const timer = setTimeout(() => {
       client.close()
+      // Notify host manager about timeout to trigger potential health probe/failover
+      notifyAuthTimeout().catch(e => warn('[radius] notifyAuthTimeout error', e))
       resolve({ ok: false })
     }, effectiveTimeoutMs)
 
@@ -123,29 +156,29 @@ export async function radiusAuthenticate(
         let offset = 20
         let foundClass: string | undefined = undefined
         const allClasses: string[] = []
-        
+
         while (offset + 2 <= msg.length) {
           const t = msg.readUInt8(offset)
           const l = msg.readUInt8(offset + 1)
-          
+
           // Validate attribute length per RFC 2865
           if (l < 2) {
             warn('[radius] invalid attribute length < 2; stopping parse')
             break
           }
-          
+
           // ensure attribute does not run past the end of the packet
           if (offset + l > msg.length) {
             warn('[radius] attribute length runs past packet end; stopping parse')
             break
           }
-          
+
           const value = msg.slice(offset + 2, offset + l)
-          
+
           // Check if this is our target attribute
           let isTargetAttribute = false
           let extractedValue: string | undefined = undefined
-          
+
           if (t === config.RADIUS_ASSIGNMENT) {
             if (t === 26 && config.RADIUS_VENDOR_ID !== undefined && config.RADIUS_VENDOR_TYPE !== undefined) {
               // Vendor-Specific Attribute (VSA) parsing
@@ -153,10 +186,10 @@ export async function radiusAuthenticate(
                 const vendorId = value.readUInt32BE(0)
                 const vendorType = value.readUInt8(4)
                 const vendorLength = value.readUInt8(5)
-                
+
                 if (vendorId === config.RADIUS_VENDOR_ID && vendorType === config.RADIUS_VENDOR_TYPE) {
                   const vendorValue = value.slice(6, 6 + vendorLength - 2).toString("utf8")
-                  
+
                   if (config.RADIUS_VALUE_PATTERN) {
                     // Extract value using regex pattern
                     const regex = new RegExp(config.RADIUS_VALUE_PATTERN)
@@ -175,7 +208,7 @@ export async function radiusAuthenticate(
             } else {
               // Regular attribute parsing
               const attributeValue = value.toString("utf8")
-              
+
               if (config.RADIUS_VALUE_PATTERN) {
                 // Extract value using regex pattern
                 const regex = new RegExp(config.RADIUS_VALUE_PATTERN)
@@ -191,7 +224,7 @@ export async function radiusAuthenticate(
               }
             }
           }
-          
+
           if (isTargetAttribute && extractedValue !== undefined) {
             allClasses.push(extractedValue)
             // Take the first assignment attribute encountered per RFC 2865 implementation choice
@@ -199,10 +232,10 @@ export async function radiusAuthenticate(
               foundClass = extractedValue
             }
           }
-          
+
           offset += l
         }
-        
+
         resolve({ ok: true, class: foundClass, raw: msg.toString("hex") })
       } else {
         resolve({ ok: false, raw: msg.toString("hex") })
@@ -211,7 +244,7 @@ export async function radiusAuthenticate(
 
     client.on("error", (err) => {
       clearTimeout(timer)
-      try { client.close() } catch {}
+      try { client.close() } catch { }
       reject(err)
     })
 
@@ -233,7 +266,7 @@ export async function radiusAuthenticate(
     } catch {
       // ignore hmac failures; some servers don't require Message-Authenticator
     }
- 
+
     client.send(packet, port, host, (err) => {
       if (err) {
         clearTimeout(timer)

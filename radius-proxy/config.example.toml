@@ -7,10 +7,19 @@ OAUTH_CODE_TTL = 600
 OAUTH_REFRESH_TOKEN_TTL = 7776000
 REDIRECT_URIS = ["https://grafana.example.com/login/generic_oauth"]
 
-# RADIUS server
-RADIUS_HOST = "192.168.0.191"
+# RADIUS servers (ordered). Use either RADIUS_HOST for single host OR RADIUS_HOSTS for multiple.
+# RADIUS_HOST = "192.168.0.191"
+RADIUS_HOSTS = ["192.168.0.191", "192.168.0.192", "192.168.0.193"]
 RADIUS_SECRET = "testing123"
 RADIUS_TIMEOUT = 5
+# Health check configuration (sends Access-Request periodically to detect host liveness)
+# Interval in seconds between background health checks (default 1800 = 30m)
+RADIUS_HEALTHCHECK_INTERVAL = 1800
+# Per-host health check timeout in seconds (default 5)
+RADIUS_HEALTHCHECK_TIMEOUT = 5
+# Dummy credentials used for health checks
+RADIUS_HEALTHCHECK_USER = "grafana_dummy_user"
+RADIUS_HEALTHCHECK_PASSWORD = "dummy_password"
 # RADIUS attribute number for group assignment (default: 25 for Class attribute)
 # Examples: 25 (Class), 136 (Management-Policy-Id), 26 (Vendor-Specific)
 RADIUS_ASSIGNMENT = 25
