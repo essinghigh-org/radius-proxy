@@ -333,7 +333,7 @@ export function _invalidateConfigCache(): void {
 // near-real-time config updates without requiring a server restart; the
 // mtime-based check in getConfig() remains as a fallback for environments
 // where fs.watch isn't reliable.
-; (function initConfigWatcher() {
+function initConfigWatcher() {
   try {
     const root = findProjectRoot()
     const cfgPath = path.join(root, "config.toml")
@@ -360,4 +360,6 @@ export function _invalidateConfigCache(): void {
   } catch {
     // Defensive: never throw during module initialization.
   }
-})()
+}
+
+initConfigWatcher();

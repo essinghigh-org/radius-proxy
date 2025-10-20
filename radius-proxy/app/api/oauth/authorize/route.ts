@@ -1,11 +1,11 @@
-import { getIssuer } from "@/lib/server-utils"
-import { NextResponse } from "next/server"
-import { radiusAuthenticate } from "@/lib/radius"
-import { config } from "@/lib/config"
-import { isClassPermitted } from "@/lib/access"
-import crypto from "crypto"
-import { warn, error, info } from "@/lib/log"
-import { getStorage, cleanupExpiredCodes } from '@/lib/storage'
+import { getIssuer } from "@/lib/server-utils";
+import { NextResponse } from "next/server";
+import { radiusAuthenticate } from "@/lib/radius";
+import { config } from "@/lib/config";
+import { isClassPermitted } from "@/lib/access";
+import crypto from "crypto";
+import { warn, error, info } from "@/lib/log";
+import { getStorage, cleanupExpiredCodes } from '@/lib/storage';
 
 // Helper function to add security headers to any response
 function addSecurityHeaders(response: NextResponse): NextResponse {
@@ -15,6 +15,14 @@ function addSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set('X-XSS-Protection', '1; mode=block');
   response.headers.set('Content-Security-Policy', "default-src 'self'");
   return response;
+}
+
+// Derive groups from RADIUS Class attribute.
+// Strategy: if class contains semicolons or commas, split; otherwise single value.
+function deriveGroups(classAttr?: string): string[] {
+  if (!classAttr) return [];
+  // Only pass through the raw RADIUS class tokens (split on ; or ,)
+  return classAttr.split(/[;,]/).map((p) => p.trim()).filter(Boolean);
 }
 
 // Very small authorize implementation: accepts POST with username/password and client_id, responds with code
@@ -96,7 +104,6 @@ export async function POST(req: Request) {
   }
 
   // Active RADIUS host is managed by radius host manager (failover aware)
-  // const activeHost = getActiveRadiusHost() // Not used
 
   // Validate client id against configured value
   const EXPECTED_CLIENT = config.OAUTH_CLIENT_ID || "grafana"
@@ -108,7 +115,6 @@ export async function POST(req: Request) {
 
   let res
   try {
-    // const radiusPort = Number(config.RADIUS_PORT || 1812) // Not used
     const radiusTimeoutMs = Math.max(0, Number(config.RADIUS_TIMEOUT || 5)) * 1000
     // New style call: (username, password, timeoutMs)
     res = await radiusAuthenticate(username, password, radiusTimeoutMs)
@@ -142,13 +148,6 @@ export async function POST(req: Request) {
     warn('[authorize] Failed to cleanup expired codes', { error: err.message })
   })
 
-  // Derive groups from RADIUS Class attribute.
-  // Strategy: if class contains semicolons or commas, split; otherwise single value.
-  function deriveGroups(classAttr?: string): string[] {
-    if (!classAttr) return []
-    // Only pass through the raw RADIUS class tokens (split on ; or ,)
-    return classAttr.split(/[;,]/).map(p => p.trim()).filter(Boolean)
-  }
   const groups = deriveGroups(res.class);
 
   try {

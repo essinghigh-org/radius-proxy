@@ -44,7 +44,6 @@ export async function POST(req: Request) {
 
     if (!entry || !entry.username) return NextResponse.json({ error: "invalid_grant" }, { status: 400 })
 
-
     // Reject expired authorization codes to prevent reuse.
     if (entry.expiresAt && Date.now() > entry.expiresAt) {
       // Remove expired code and fail with invalid_grant per spec.
