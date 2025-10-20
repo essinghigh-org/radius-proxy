@@ -323,7 +323,7 @@ export const config: Config = new Proxy({} as Config, {
 })
 
 // Test utility to invalidate config cache
-export function _invalidateConfigCache() {
+export function _invalidateConfigCache(): void {
   _cachedConfig = null
   _cachedMtime = 0
 }

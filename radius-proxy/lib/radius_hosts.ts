@@ -168,13 +168,13 @@ export async function notifyAuthTimeout() {
 
 // TEST UTILITIES (not part of public production API)
 // Allows tests to inject custom host lists after setting env vars & invalidating config.
-export function _testReloadHosts() {
+export function _testReloadHosts(): void {
     radiusHostManager['reloadHostsFromConfig']()
     radiusHostManager['activeHost'] = null
     radiusHostManager['selectInitialActive']()
 }
 
-export function _testInjectHosts(hosts: string[]) {
+export function _testInjectHosts(hosts: string[]): void {
     // Replace host list entirely for deterministic testing
     radiusHostManager['hosts'] = hosts.slice()
     radiusHostManager['health'] = new Map(hosts.map(h => [h, { host: h, lastOkAt: null, lastTriedAt: null, consecutiveFailures: 0 }]))

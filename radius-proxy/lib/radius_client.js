@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+'use strict'
 const dgram = require('dgram')
 const crypto = require('crypto')
 const { buildAccessRequest } = require('./radius_net')

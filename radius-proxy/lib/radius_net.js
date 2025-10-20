@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
+'use strict'
 const crypto = require('crypto')
 
 function buildAccessRequest({ id, authenticator, username, password, secret, nasIp }) {

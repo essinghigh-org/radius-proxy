@@ -95,7 +95,7 @@ function loadOrCreateKeys(): KeyInfo {
 
 const keyinfo: KeyInfo = loadOrCreateKeys()
 
-export function signToken(payload: object, opts?: jwt.SignOptions) {
+export function signToken(payload: object, opts?: jwt.SignOptions): string {
   if (keyinfo.algo === "RS256") {
     // jsonwebtoken library expects kid via keyid option; it adds header.kid automatically
     return jwt.sign(payload, keyinfo.privateKey, { algorithm: "RS256", keyid: keyinfo.kid, ...(opts || {}) })
@@ -103,7 +103,7 @@ export function signToken(payload: object, opts?: jwt.SignOptions) {
   return jwt.sign(payload, keyinfo.secret, { algorithm: "HS256", ...(opts || {}) })
 }
 
-export function verifyToken(token: string) {
+export function verifyToken(token: string): string | object {
   if (keyinfo.algo === "RS256") {
     // Restrict allowed algorithms explicitly to prevent algorithm confusion attacks.
     return jwt.verify(token, keyinfo.publicKey, { algorithms: ["RS256"] } as jwt.VerifyOptions)
@@ -111,6 +111,6 @@ export function verifyToken(token: string) {
   return jwt.verify(token, keyinfo.secret, { algorithms: ["HS256"] } as jwt.VerifyOptions)
 }
 
-export function getKeyInfo() {
+export function getKeyInfo(): KeyInfo {
   return keyinfo
 }

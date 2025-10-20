@@ -211,23 +211,23 @@ function consoleWrite(level: string, prefix: string, args: unknown[]) {
   lastConsoleCount = 1
 }
 
-export function debug(...args: unknown[]) {
+export function debug(...args: unknown[]): void {
   if (!DEBUG_ENABLED) return
   consoleWrite('debug', '[radius-proxy][debug]', args)
   appendLog('debug', args)
 }
 
-export function info(...args: unknown[]) {
+export function info(...args: unknown[]): void {
   consoleWrite('info', '[radius-proxy][info]', args)
   appendLog('info', args)
 }
 
-export function warn(...args: unknown[]) {
+export function warn(...args: unknown[]): void {
   consoleWrite('warn', '[radius-proxy][warn]', args)
   appendLog('warn', args)
 }
 
-export function error(...args: unknown[]) {
+export function error(...args: unknown[]): void {
   // Always surface errors to console regardless of LOG_LEVEL
   // Flush any repeated summary first so errors are visible in context
   flushLastConsoleRepeat()
