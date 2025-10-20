@@ -1,19 +1,12 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
-import { radiusHostManager, getActiveRadiusHost, _testReloadHosts, _testInjectHosts } from '@/lib/radius_hosts'
+import { radiusHostManager, getActiveRadiusHost, _testReloadHosts } from '@/lib/radius_hosts'
 import { _invalidateConfigCache } from '@/lib/config'
 
 // Mock radius module to simulate host responses. We'll return ok for specific hosts.
 let responsiveHosts: Set<string>
 
 mock.module('@/lib/radius', () => ({
-    radiusAuthenticate: async (
-        host: string,
-        secret: string,
-        username: string,
-        password: string,
-        timeout?: number,
-        port?: number
-    ) => {
+    radiusAuthenticate: async (host: string) => {
         // Simulate timeout by never responding if host not responsive
         if (!responsiveHosts.has(host)) {
             // Simulate timeout by throwing error

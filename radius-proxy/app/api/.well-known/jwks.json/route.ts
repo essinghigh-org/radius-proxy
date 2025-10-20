@@ -2,6 +2,12 @@ import { NextResponse } from "next/server"
 import { getKeyInfo } from "@/lib/jwt"
 import crypto from "crypto"
 
+const DEFAULT_ACRH = 'authorization,content-type,x-grafana-device-id'
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": DEFAULT_ACRH,
+}
+
 export async function GET() {
   const keyinfo = getKeyInfo()
   if (keyinfo.algo === 'RS256') {
@@ -10,11 +16,12 @@ export async function GET() {
       const key = crypto.createPublicKey(pub)
       const jwk = key.export({ format: 'jwk' }) as Record<string, unknown>
       const kid = crypto.createHash('sha256').update(pub).digest('base64url')
-      ;(jwk as Record<string, unknown>)['kid'] = kid
-      ;(jwk as Record<string, unknown>)['use'] = 'sig'
+      const jwkRec = jwk as Record<string, unknown>
+      jwkRec.kid = kid
+      jwkRec.use = 'sig'
       return NextResponse.json(
-        { keys: [jwk] },
-        { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,x-grafana-device-id" } }
+        { keys: [jwkRec] },
+        { headers: CORS_HEADERS }
       )
     } catch (err) {
       // Log the underlying error for diagnostics without exposing details to clients.
@@ -24,30 +31,24 @@ export async function GET() {
       try {
         const mod = await import('@/lib/log')
         // use structured logging; store message and short error text
-        mod.error('[jwks] failed to generate JWK', { err: (err as Error).message })
+        mod.error('[jwks] failed to generate JWK', { err: String(err) })
       } catch {
         // If dynamic import fails for any reason, fall back to a concise console error
         // so the message still appears prominently in developer consoles.
-        console.error('[radius-proxy][jwks] failed to generate JWK', (err as Error).message)
+        console.error('[radius-proxy][jwks] failed to generate JWK', String(err))
       }
-      return NextResponse.json(
-        { keys: [] },
-        { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,x-grafana-device-id" } }
-      )
+      return NextResponse.json({ keys: [] }, { headers: CORS_HEADERS })
     }
   }
-  return NextResponse.json(
-    { keys: [] },
-    { headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,x-grafana-device-id" } }
-  )
+  return NextResponse.json({ keys: [] }, { headers: CORS_HEADERS })
 }
 
 export async function OPTIONS(req: Request) {
-  const acrh = req.headers.get('access-control-request-headers') || 'authorization,content-type,x-grafana-device-id'
+  const acrh = req.headers.get('access-control-request-headers') || DEFAULT_ACRH
   return new NextResponse(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Origin": "*",
+      ...CORS_HEADERS,
       "Access-Control-Allow-Methods": "GET,OPTIONS",
       "Access-Control-Allow-Headers": acrh,
     },

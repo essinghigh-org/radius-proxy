@@ -14,18 +14,18 @@ import { signToken } from "@/lib/jwt";
 
 // Mock radius authentication supporting both legacy and new signatures
 mock.module("@/lib/radius", () => ({
-  radiusAuthenticate: async (...args: any[]) => {
+  radiusAuthenticate: async (...args: unknown[]) => {
     // New signature: (username, password, timeout?)
     // Legacy signature: (host, secret, username, password, timeout?, port?)
     let username: string
     let password: string
     if (args.length >= 4 && typeof args[2] === 'string' && typeof args[3] === 'string') {
       // Legacy
-      username = args[2]
-      password = args[3]
+      username = args[2] as string
+      password = args[3] as string
     } else {
-      username = args[0]
-      password = args[1]
+      username = args[0] as string
+      password = args[1] as string
     }
     if (username === "testuser" && password === "testpass") {
       return { ok: true, class: "admin_group" }
