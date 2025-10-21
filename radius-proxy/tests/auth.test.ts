@@ -625,7 +625,7 @@ describe("Authentication Flow", () => {
       expect(userInfo.name).toBe("emailuser"); // Should be trimmed username
       // Note: /userinfo doesn't include email - that's in /userinfo/emails
 
-      // 4. Verify emails endpoint uses config.EMAIL_SUFFIX (not the extracted domain)
+      // 4. Verify emails endpoint now uses the email from the token
       const emailsRequest = new Request(
         "http://localhost:3000/api/oauth/userinfo/emails",
         {
@@ -637,7 +637,7 @@ describe("Authentication Flow", () => {
       expect(emailsResponse.status).toBe(200);
       const emails = await emailsResponse.json();
       expect(emails).toEqual([
-        { email: "emailuser@example.local", primary: true }, // emails endpoint uses config.EMAIL_SUFFIX, not token email
+        { email: "emailuser@company.com", primary: true }, // Should now use the email from the token
       ]);
     });
 
@@ -803,7 +803,7 @@ describe("Authentication Flow", () => {
       const entry = await storage.get(code!);
       expect(entry).toBeDefined();
       expect(entry?.username).toBe("emailuser"); // Should take first part before @
-      expect(entry?.emailDomain).toBe(""); // Split('@') on "emailuser@@malformed.com" gives ["emailuser", "", "malformed.com"], so parts[1] is ""
+      expect(entry?.emailDomain).toBe("@malformed.com"); // Everything after the first '@' is considered the domain
     });
   });
 });

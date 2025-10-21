@@ -79,9 +79,9 @@ export async function POST(req: Request) {
   let emailDomain = config.EMAIL_SUFFIX
 
   if (rawUsername.includes('@')) {
-    const parts = rawUsername.split('@')
-    username = parts[0] // Use part before @ as the actual username
-    emailDomain = parts[1] // Use part after @ as the email domain
+    const atIndex = rawUsername.indexOf('@');
+    username = rawUsername.substring(0, atIndex);
+    emailDomain = rawUsername.substring(atIndex + 1);
   }
   const _client_id = String(body.get("client_id") || "grafana")
   const redirect_uri = String(body.get('redirect_uri') || '')
