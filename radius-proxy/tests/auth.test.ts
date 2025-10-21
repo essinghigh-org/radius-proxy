@@ -173,6 +173,70 @@ describe("Authentication Flow", () => {
         "Class not permitted"
       );
     });
+
+    test("should apply default scopes when none provided", async () => {
+      const formData = new FormData();
+      formData.append("user", "testuser");
+      formData.append("password", "testpass");
+      formData.append("client_id", "grafana");
+      formData.append("redirect_uri", "https://grafana.example.com/login/generic_oauth");
+      const request = new Request("http://localhost:54567/api/oauth/authorize", { method: "POST", body: formData });
+      const response = await authorizePOST(request);
+      expect(response.status).toBe(302);
+      const code = new URL(response.headers.get("Location")!).searchParams.get("code");
+      const storage = getStorage();
+      const entry = await storage.get(code!);
+      expect(entry?.scope).toBe("openid profile");
+    });
+
+    test("should accept subset of supported scopes", async () => {
+      const formData = new FormData();
+      formData.append("user", "testuser");
+      formData.append("password", "testpass");
+      formData.append("client_id", "grafana");
+      formData.append("redirect_uri", "https://grafana.example.com/login/generic_oauth");
+      formData.append("scope", "openid");
+      const request = new Request("http://localhost:54567/api/oauth/authorize", { method: "POST", body: formData });
+      const response = await authorizePOST(request);
+      expect(response.status).toBe(302);
+      const code = new URL(response.headers.get("Location")!).searchParams.get("code");
+      const storage = getStorage();
+      const entry = await storage.get(code!);
+      expect(entry?.scope).toBe("openid");
+    });
+
+    test("should reject unsupported scope", async () => {
+      const formData = new FormData();
+      formData.append("user", "testuser");
+      formData.append("password", "testpass");
+      formData.append("client_id", "grafana");
+      formData.append("redirect_uri", "https://grafana.example.com/login/generic_oauth");
+      formData.append("scope", "openid profile imaginary");
+      const request = new Request("http://localhost:54567/api/oauth/authorize", { method: "POST", body: formData });
+      const response = await authorizePOST(request);
+      expect(response.status).toBe(302); // redirect with error
+      const loc = response.headers.get("Location");
+      expect(loc).toBeString();
+      const redirectUrl = new URL(loc!);
+      expect(redirectUrl.searchParams.get("error")).toBe("invalid_scope");
+    });
+
+    test("should normalize duplicate and uppercase scopes", async () => {
+      const formData = new FormData();
+      formData.append("user", "testuser");
+      formData.append("password", "testpass");
+      formData.append("client_id", "grafana");
+      formData.append("redirect_uri", "https://grafana.example.com/login/generic_oauth");
+      formData.append("scope", "OPENID   profile openid PROFILE");
+      const request = new Request("http://localhost:54567/api/oauth/authorize", { method: "POST", body: formData });
+      const response = await authorizePOST(request);
+      expect(response.status).toBe(302);
+      const code = new URL(response.headers.get("Location")!).searchParams.get("code");
+      const storage = getStorage();
+      const entry = await storage.get(code!);
+      // Order preserved from first occurrences: openid profile
+      expect(entry?.scope).toBe("openid profile");
+    });
   });
 
   describe("POST /api/oauth/token", () => {

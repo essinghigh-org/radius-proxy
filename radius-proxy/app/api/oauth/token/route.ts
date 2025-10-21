@@ -7,6 +7,27 @@ import { getStorage } from '@/lib/storage'
 import crypto from "crypto"
 import { info, warn } from '@/lib/log'
 
+// Helper to generate tokens from a user entry (from auth code or refresh token)
+function generateTokens(
+  req: Request,
+  user: { username: string; emailDomain?: string; groups?: string[]; scope?: string }
+) {
+  const scope = user.scope || 'openid profile'
+  const now = Math.floor(Date.now() / 1000)
+  const issuer = getIssuer(req)
+  const aud = config.OAUTH_CLIENT_ID
+  const emailDomain = user.emailDomain || config.EMAIL_SUFFIX
+  const email = `${user.username}@${emailDomain}`
+  const groups: string[] = Array.isArray(user.groups) ? user.groups : []
+  const isGrafanaAdmin = groups.some((group: string) => (config.ADMIN_CLASSES || []).includes(group))
+  const role = isGrafanaAdmin ? "GrafanaAdmin" : undefined
+  const baseClaims = { sub: user.username, name: user.username, email, groups, grafana_admin: isGrafanaAdmin, role }
+  const accessToken = signToken({ ...baseClaims, scope, iss: issuer, aud }, { expiresIn: "1h" })
+  const idToken = signToken({ ...baseClaims, iss: issuer, aud, iat: now }, { expiresIn: "1h" })
+  
+  return { accessToken, idToken, scope, email, role, groups }
+}
+
 export async function POST(req: Request) {
   const body = await req.formData()
   const grant_type = String(body.get("grant_type") || "")
@@ -94,19 +115,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const scope = entry.scope || 'openid profile'
-    const now = Math.floor(Date.now() / 1000)
-    const issuer = getIssuer(req)
-    const aud = config.OAUTH_CLIENT_ID
-    const emailDomain = entry.emailDomain || config.EMAIL_SUFFIX
-    const email = `${entry.username}@${emailDomain}`
-    const groups: string[] = Array.isArray(entry.groups) ? entry.groups : ([] as string[])
-    // Check if user should be grafana admin based on configured admin classes
-    const isGrafanaAdmin = groups.some((group: string) => (config.ADMIN_CLASSES || []).includes(group))
-    const role = isGrafanaAdmin ? "GrafanaAdmin" : undefined
-    const baseClaims = { sub: entry.username, name: entry.username, email, groups, grafana_admin: isGrafanaAdmin, role }
-    const accessToken = signToken({ ...baseClaims, scope, iss: issuer, aud }, { expiresIn: "1h" })
-    const idToken = signToken({ ...baseClaims, iss: issuer, aud, iat: now }, { expiresIn: "1h" })
+    const { accessToken, idToken, scope, email, role, groups } = generateTokens(req, entry)
 
     // Generate refresh token
     const refreshToken = crypto.randomBytes(32).toString("base64url")
@@ -116,7 +125,7 @@ export async function POST(req: Request) {
     try {
       await storage.setRefreshToken(refreshToken, {
         username: entry.username,
-        emailDomain: emailDomain,
+        emailDomain: entry.emailDomain,
         class: entry.class,
         scope: scope,
         groups: groups,
@@ -140,9 +149,6 @@ export async function POST(req: Request) {
     (async () => {
       try {
         const classMap = (config as Record<string, unknown>).CLASS_MAP as Record<string, number[]> || {}
-        const teamEmail = `${entry.username}@${emailDomain}`
-        const groups = Array.isArray(entry.groups) ? entry.groups : ([] as string[])
-        const role = baseClaims.role
         // Deduplicate team IDs across groups to avoid calling the helper multiple times for the same team.
         const seen = new Set<number>()
         for (const g of groups) {
@@ -151,7 +157,7 @@ export async function POST(req: Request) {
             if (seen.has(tid)) continue
             seen.add(tid)
             try {
-              await addUserToTeamByEmail(tid, teamEmail, entry.username, role)
+              await addUserToTeamByEmail(tid, email, entry.username, role)
             } catch {
               // Already logged in helper; keep this defensive
             }
@@ -204,20 +210,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "invalid_client" }, { status: 401 })
     }
 
-    const scope = refreshEntry.scope || 'openid profile'
-    const now = Math.floor(Date.now() / 1000)
-    const issuer = getIssuer(req)
-    const aud = config.OAUTH_CLIENT_ID
-    const emailDomain = refreshEntry.emailDomain || config.EMAIL_SUFFIX
-    const email = `${refreshEntry.username}@${emailDomain}`
-    const groups: string[] = Array.isArray(refreshEntry.groups) ? refreshEntry.groups : ([] as string[])
-    // Check if user should be grafana admin based on configured admin classes
-    const isGrafanaAdmin = groups.some((group: string) => (config.ADMIN_CLASSES || []).includes(group))
-    const role = isGrafanaAdmin ? "GrafanaAdmin" : undefined
-    const baseClaims = { sub: refreshEntry.username, name: refreshEntry.username, email, groups, grafana_admin: isGrafanaAdmin, role }
-
-    const accessToken = signToken({ ...baseClaims, scope, iss: issuer, aud }, { expiresIn: "1h" })
-    const idToken = signToken({ ...baseClaims, iss: issuer, aud, iat: now }, { expiresIn: "1h" })
+    const { accessToken, idToken, scope, groups } = generateTokens(req, refreshEntry)
 
     // Optionally rotate refresh token (recommended security practice)
     const newRefreshToken = crypto.randomBytes(32).toString("base64url")
@@ -227,7 +220,7 @@ export async function POST(req: Request) {
       // Store new refresh token
       await storage.setRefreshToken(newRefreshToken, {
         username: refreshEntry.username,
-        emailDomain: emailDomain,
+        emailDomain: refreshEntry.emailDomain,
         class: refreshEntry.class,
         scope: scope,
         groups: groups,
@@ -272,5 +265,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ error: "unsupported_grant_type" }, { status: 400 })
 }
-
-// Role is no longer derived here; rely purely on groups claim for downstream mapping.

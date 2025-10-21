@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { config } from "@/lib/config"
+import { SUPPORTED_SCOPES } from '@/lib/scopes'
 
 export async function GET(req: Request) {
   // Respect reverse proxy headers when deriving the public issuer so discovery and tokens
@@ -27,7 +28,7 @@ export async function GET(req: Request) {
     token_endpoint_auth_methods_supported: ["client_secret_basic", "client_secret_post"],
     subject_types_supported: ["public"],
     id_token_signing_alg_values_supported: ["RS256"],
-    scopes_supported: ["openid", "profile", "email"],
+    scopes_supported: Array.from(SUPPORTED_SCOPES.values()),
     claims_supported: ["sub", "name", "email", "role"],
   }
   return NextResponse.json(data, { headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Headers": "authorization,content-type,x-grafana-device-id" } })

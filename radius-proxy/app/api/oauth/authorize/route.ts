@@ -4,6 +4,7 @@ import { radiusAuthenticate } from "@/lib/radius";
 import { config } from "@/lib/config";
 import { isClassPermitted } from "@/lib/access";
 import crypto from "crypto";
+import { normalizeRequestedScopes } from '@/lib/scopes'
 import { warn, error, info } from "@/lib/log";
 import { getStorage, cleanupExpiredCodes } from '@/lib/storage';
 
@@ -87,7 +88,20 @@ export async function POST(req: Request) {
   const redirect_uri = String(body.get('redirect_uri') || '')
   const state = String(body.get('state') || '')
   const accept = String(body.get('accept') || '') // if set to json, return JSON instead of redirect
-  const scope = String(body.get('scope') || 'openid profile')
+  // Validate and normalize requested scopes. If unsupported scope present, respond with invalid_scope.
+  let scope: string
+  try {
+    scope = normalizeRequestedScopes(String(body.get('scope') || ''))
+  } catch (e) {
+    const origin = getIssuer(req)
+    const err = (e as Error).message
+    // e.message formatted as unsupported_scope:<token>
+    const desc = 'Unsupported scope requested'
+    if (accept === 'json') {
+      return addSecurityHeaders(NextResponse.json({ error: 'invalid_scope', error_description: desc }, { status: 400 }))
+    }
+    return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'invalid_scope', desc), { status: 302 }))
+  }
   // PKCE parameters (optional)
   const code_challenge = String(body.get('code_challenge') || '')
   const code_challenge_method = String(body.get('code_challenge_method') || '')
@@ -120,7 +134,7 @@ export async function POST(req: Request) {
     res = await radiusAuthenticate(username, password, radiusTimeoutMs)
   } catch (e) {
     error('[authorize] radius exception', { err: (e as Error).message })
-    if (accept === 'json') return NextResponse.json({ error: 'server_error' }, { status: 500 })
+    if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: 'server_error' }, { status: 500 }))
     return addSecurityHeaders(NextResponse.redirect(buildErrorRedirect(origin, redirect_uri, state, 'server_error', 'RADIUS failure'), { status: 302 }))
   }
   if (!res.ok) {
@@ -202,11 +216,7 @@ export async function POST(req: Request) {
         const hasNoAtInAuthority = !authorityPart.includes('@') // Prevent user@host tricks in authority
         const isNotDataOrJavascriptScheme = !['javascript:', 'data:', 'file:', 'ftp:'].some(scheme => redirect_uri.toLowerCase().startsWith(scheme))
 
-        // Prevent phishing by blocking suspicious domain names anywhere in the URL
-        const suspiciousDomains = ['evil.com', 'attacker.com', 'phishing.com', 'malicious.com']
-        const hasNoSuspiciousDomains = !suspiciousDomains.some(domain => redirect_uri.toLowerCase().includes(domain))
-
-        isAllowed = isValidProtocol && isValidHostname && isValidPort && hasNoUserInfo && hasNoAtInAuthority && isNotDataOrJavascriptScheme && hasNoSuspiciousDomains
+        isAllowed = isValidProtocol && isValidHostname && isValidPort && hasNoUserInfo && hasNoAtInAuthority && isNotDataOrJavascriptScheme
       }
 
       if (!isAllowed) {

@@ -44,6 +44,25 @@ These settings define the behavior of the proxy as an OAuth 2.0 and OpenID Conne
 
 ---
 
+### Scope Validation
+
+`radius-proxy` enforces an allowlist of supported scopes. The current supported scopes are:
+
+- `openid`
+- `profile`
+- `email`
+
+Behavior:
+
+- If no `scope` parameter is provided, the default scopes `openid profile` are applied.
+- Duplicate scopes and casing differences are normalized (e.g. `OPENID  profile openid` becomes `openid profile`).
+- Any unsupported scope token results in an `invalid_scope` error (redirect or JSON depending on request mode).
+- Refresh token exchanges reuse the originally granted scope; scope cannot be expanded during refresh.
+
+To add new scopes in the future, update `lib/scopes.ts` (`SUPPORTED_SCOPES` and `DEFAULT_SCOPES`). The discovery document will automatically reflect the new values.
+
+---
+
 ## [RADIUS]
 
 These settings configure the connection to your RADIUS servers.
