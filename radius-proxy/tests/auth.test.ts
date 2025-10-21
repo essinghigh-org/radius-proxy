@@ -14,19 +14,7 @@ import { signToken } from "@/lib/jwt";
 
 // Mock radius authentication supporting both legacy and new signatures
 mock.module("@/lib/radius", () => ({
-  radiusAuthenticate: async (...args: unknown[]) => {
-    // New signature: (username, password, timeout?)
-    // Legacy signature: (host, secret, username, password, timeout?, port?)
-    let username: string
-    let password: string
-    if (args.length >= 4 && typeof args[2] === 'string' && typeof args[3] === 'string') {
-      // Legacy
-      username = args[2] as string
-      password = args[3] as string
-    } else {
-      username = args[0] as string
-      password = args[1] as string
-    }
+  radiusAuthenticate: async (host: string, username: string, password: string) => {
     if (username === "testuser" && password === "testpass") {
       return { ok: true, class: "admin_group" }
     }
@@ -575,8 +563,8 @@ describe("Authentication Flow", () => {
   });
 
   describe("/api/oauth/userinfo/emails", () => {
-    test("should return user email for a valid token", async () => {
-      const payload = { sub: "testuser" };
+    test("should return user email from token if present", async () => {
+      const payload = { sub: "testuser", email: "testuser@example.com" };
       const token = signToken(payload);
 
       const request = new Request(
@@ -590,8 +578,25 @@ describe("Authentication Flow", () => {
       expect(response.status).toBe(200);
       const emails = await response.json();
       expect(emails).toEqual([
-        { email: `testuser@${config.EMAIL_SUFFIX}`, primary: true },
+        { email: "testuser@example.com", primary: true },
       ]);
+    });
+
+    test("should return empty array if email not in token", async () => {
+      const payload = { sub: "testuser" };
+      const token = signToken(payload);
+
+      const request = new Request(
+        "http://localhost:3000/api/oauth/userinfo/emails",
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const response = await userinfoEmailsGET(request);
+      expect(response.status).toBe(200);
+      const emails = await response.json();
+      expect(emails).toEqual([]);
     });
   });
 

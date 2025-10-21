@@ -2,7 +2,7 @@ import dgram from "dgram"
 import crypto from "crypto"
 import { warn, debug } from "@/lib/log"
 import { config } from "@/lib/config"
-import { getActiveRadiusHost, notifyAuthTimeout } from "@/lib/radius_hosts"
+import { notifyAuthTimeout } from "@/lib/radius_hosts"
 
 // Minimal RADIUS client using UDP for Access-Request/Accept exchange.
 // This is intentionally small and supports only PAP (User-Password) and Class attribute extraction.
@@ -14,42 +14,13 @@ export interface RadiusResult {
 }
 
 export async function radiusAuthenticate(
-  hostOrUsername: string,
-  maybeSecretOrPassword: string,
-  maybeUsernameOrTimeout?: string | number,
-  maybePassword?: string,
-  maybeTimeoutMs?: number,
-  maybePort = 1812
+  host: string,
+  username: string,
+  password: string,
+  timeoutMs?: number,
+  port: number = config.RADIUS_PORT || 1812
 ): Promise<RadiusResult> {
-  // Backwards-compatible argument handling:
-  // Previous signature: (host, secret, username, password, timeoutMs, port)
-  // New preferred signature: (username, password, timeoutMs?) using active host + configured secret
-  let host: string
-  let secret: string
-  let username: string
-  let password: string
-  let timeoutMs: number | undefined
-  let port: number
-
-  if (typeof maybeUsernameOrTimeout === 'string' && typeof maybePassword === 'string') {
-    // Legacy style call with explicit host & secret
-    host = hostOrUsername
-    secret = maybeSecretOrPassword
-    username = maybeUsernameOrTimeout
-    password = maybePassword
-    timeoutMs = typeof maybeTimeoutMs === 'number' ? maybeTimeoutMs : undefined
-    port = maybePort
-  } else {
-    // New style: first two params are username/password
-    host = getActiveRadiusHost()
-    secret = config.RADIUS_SECRET
-    username = hostOrUsername
-    password = maybeSecretOrPassword
-    timeoutMs = typeof maybeUsernameOrTimeout === 'number' ? maybeUsernameOrTimeout : undefined
-    port = typeof maybePassword === 'number' ? maybePassword : (typeof maybeTimeoutMs === 'number' ? maybeTimeoutMs : (typeof maybePort === 'number' ? maybePort : 1812))
-    // If ambiguous, fallback to configured port
-    if (typeof port !== 'number' || Number.isNaN(port)) port = Number(config.RADIUS_PORT || 1812)
-  }
+  const secret = config.RADIUS_SECRET;
   debug('[radius] authenticate start', { host, user: username })
   return new Promise((resolve, reject) => {
     const client = dgram.createSocket("udp4")

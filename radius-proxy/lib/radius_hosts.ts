@@ -126,7 +126,7 @@ class RadiusHostManager {
         try {
             debug('[radius-hosts] probing host', { host })
             const port = Number(config.RADIUS_PORT || 1812)
-            const res = await radiusAuthHost(host, config.RADIUS_SECRET, hcUser, hcPass, timeoutMs, port)
+            const res = await radiusAuthHost(host, hcUser, hcPass, timeoutMs, port)
             if (res.ok) {
                 entry.lastOkAt = Date.now()
                 entry.consecutiveFailures = 0

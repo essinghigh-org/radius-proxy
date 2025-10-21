@@ -1,7 +1,6 @@
 // Central definition of supported OAuth/OIDC scopes for the radius-proxy.
 // These are advertised via the discovery document and enforced at the
 // authorization endpoint.
-// NOTE: Backwards compatibility with previous unvalidated behavior is *not* required.
 
 export const SUPPORTED_SCOPES = new Set<string>(["openid", "profile", "email"])
 

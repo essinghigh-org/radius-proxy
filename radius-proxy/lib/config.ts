@@ -5,11 +5,9 @@ import { findProjectRoot } from "./server-utils"
 type Config = {
   OAUTH_CLIENT_ID: string
   OAUTH_CLIENT_SECRET: string
-  // Primary (legacy) single host. If multiple hosts are configured via RADIUS_HOSTS
-  // or RADIUS_HOST as an array, the first host becomes initial active candidate.
+  // RADIUS host. Used if RADIUS_HOSTS is not set.
   RADIUS_HOST: string
-  // New: explicit ordered list of hosts. If absent we derive from RADIUS_HOST supporting
-  // comma separated or TOML array formats for backwards compatibility.
+  // Ordered list of RADIUS hosts for failover.
   RADIUS_HOSTS?: string[]
   RADIUS_SECRET: string
   RADIUS_PORT: number
@@ -120,25 +118,8 @@ function loadConfig(): Config {
   const cfg: Config = {
     OAUTH_CLIENT_ID: process.env.OAUTH_CLIENT_ID || base["OAUTH_CLIENT_ID"] || "grafana",
     OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "secret",
-    RADIUS_HOST: (() => {
-      // Legacy single host or first element from array-like value
-      const raw = process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1"
-      const trimmed = raw.trim()
-      // TOML array format
-      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-        const inner = trimmed.slice(1, -1)
-        const hosts = inner.split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean)
-        return hosts[0] || '127.0.0.1'
-      }
-      // Comma separated list
-      if (trimmed.includes(',')) {
-        const hosts = trimmed.split(',').map(s => s.trim()).filter(Boolean)
-        return hosts[0] || '127.0.0.1'
-      }
-      return trimmed || '127.0.0.1'
-    })(),
+    RADIUS_HOST: process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1",
     RADIUS_HOSTS: (() => {
-      // New explicit list: prefer RADIUS_HOSTS env, fallback to TOML key, then derive from RADIUS_HOST if list-like
       const rawList = process.env.RADIUS_HOSTS || base['RADIUS_HOSTS'] || ''
       const out: string[] = []
       const collect = (raw: string) => {
@@ -155,18 +136,19 @@ function loadConfig(): Config {
         // Allow space or comma separated
         t.split(/[,\s]+/).forEach(seg => { const h = seg.trim(); if (h) out.push(h) })
       }
-      if (rawList) collect(rawList)
-      else {
-        const rhRaw = process.env.RADIUS_HOST || base['RADIUS_HOST'] || ''
-        // If legacy RADIUS_HOST has array/comma syntax, derive full list
-        if (rhRaw && (rhRaw.includes(',') || (rhRaw.trim().startsWith('[') && rhRaw.trim().endsWith(']')))) {
-          collect(rhRaw)
-        }
+      if (rawList) {
+        collect(rawList)
       }
+      
       // Ensure uniqueness and preserve order
       const dedup: string[] = []
       for (const h of out) { if (!dedup.includes(h)) dedup.push(h) }
-      return dedup.length ? dedup : [process.env.RADIUS_HOST || base['RADIUS_HOST'] || '127.0.0.1']
+      if (dedup.length > 0) {
+        return dedup
+      }
+
+      const singleHost = process.env.RADIUS_HOST || base['RADIUS_HOST'] || '127.0.0.1'
+      return [singleHost]
     })(),
     RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
     RADIUS_PORT: safeParseNumber(process.env.RADIUS_PORT || base["RADIUS_PORT"], 1812),
@@ -208,10 +190,7 @@ function loadConfig(): Config {
     RADIUS_VENDOR_TYPE: process.env.RADIUS_VENDOR_TYPE || base["RADIUS_VENDOR_TYPE"] ? safeParseNumber(process.env.RADIUS_VENDOR_TYPE || base["RADIUS_VENDOR_TYPE"], 0) : undefined,
     RADIUS_VALUE_PATTERN: process.env.RADIUS_VALUE_PATTERN || base["RADIUS_VALUE_PATTERN"],
     CLASS_MAP: (() => {
-      // Accept several simple formats in config.toml for backwards compat:
-      // 1) Inline TOML table-like string: CLASS_MAP = { editor_group = [2,3], admin_group = [5] }
-      // 2) Our previous array-ish lines: CLASS_MAP = [ "editor_group": 2,3, "admin_group": 5 ]
-      // 3) Environment variable as JSON
+      // Accept TOML inline table or JSON string from env var.
       const raw = process.env.CLASS_MAP || base["CLASS_MAP"] || ''
       const out: Record<string, number[]> = {}
       const trimmed = raw.trim()
@@ -255,20 +234,6 @@ function loadConfig(): Config {
           if (key) out[key] = nums
         }
         return out
-      }
-
-      // Handle older array-like syntax: "key": 1,2,
-      // We'll split tokens by commas and parse quoted keys followed by colon and numbers
-      // Remove surrounding [ ] if present
-      const simple = (trimmed.startsWith('[') && trimmed.endsWith(']')) ? trimmed.slice(1, -1) : trimmed
-      // tokenization: find occurrences of "key": nums
-      const keyValRe = /"?([A-Za-z0-9_\-]+)"?\s*[:=]\s*([^,\n]+(?:,[^,\n]+)*)/g
-      let m: RegExpExecArray | null
-      while ((m = keyValRe.exec(simple)) !== null) {
-        const key = m[1]
-        const rest = m[2]
-        const nums = rest.split(',').map(s => Number(s.trim())).filter(n => !Number.isNaN(n))
-        if (key) out[key] = nums
       }
       return out
     })(),

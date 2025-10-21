@@ -6,7 +6,7 @@ import { _invalidateConfigCache } from '@/lib/config'
 let responsiveHosts: Set<string>
 
 mock.module('@/lib/radius', () => ({
-    radiusAuthenticate: async (host: string) => {
+    radiusAuthenticate: async (host: string, username: string, password: string) => {
         // Simulate timeout by never responding if host not responsive
         if (!responsiveHosts.has(host)) {
             // Simulate timeout by throwing error

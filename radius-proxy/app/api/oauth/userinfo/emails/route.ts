@@ -10,16 +10,11 @@ export async function GET(req: Request) {
 	const token = auth.slice('Bearer '.length)
 	try {
 		const payload = verifyToken(token) as { [k: string]: unknown }
-		const emailFromToken = typeof payload.email === 'string' ? payload.email : undefined;
-		const sub = typeof payload.sub === 'string' ? payload.sub : undefined
+		const email = typeof payload.email === 'string' ? payload.email : undefined;
 
-		if (!emailFromToken && !sub) {
+		if (!email) {
 			return NextResponse.json([], { status: 200 });
 		}
-
-		// Prefer the email from the token, but fall back to synthesizing it from the subject
-		// and configured suffix for backward compatibility or other use cases.
-		const email = emailFromToken || `${sub}@${config.EMAIL_SUFFIX}`;
 
 		return NextResponse.json([{ email, primary: true }])
 	} catch {

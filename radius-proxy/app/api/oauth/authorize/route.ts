@@ -7,6 +7,7 @@ import crypto from "crypto";
 import { normalizeRequestedScopes } from '@/lib/scopes'
 import { warn, error, info } from "@/lib/log";
 import { getStorage, cleanupExpiredCodes } from '@/lib/storage';
+import { getActiveRadiusHost } from "@/lib/radius_hosts";
 
 // Helper function to add security headers to any response
 function addSecurityHeaders(response: NextResponse): NextResponse {
@@ -131,7 +132,7 @@ export async function POST(req: Request) {
   try {
     const radiusTimeoutMs = Math.max(0, Number(config.RADIUS_TIMEOUT || 5)) * 1000
     // New style call: (username, password, timeoutMs)
-    res = await radiusAuthenticate(username, password, radiusTimeoutMs)
+    res = await radiusAuthenticate(getActiveRadiusHost(), username, password, radiusTimeoutMs)
   } catch (e) {
     error('[authorize] radius exception', { err: (e as Error).message })
     if (accept === 'json') return addSecurityHeaders(NextResponse.json({ error: 'server_error' }, { status: 500 }))
