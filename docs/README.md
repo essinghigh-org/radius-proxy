@@ -34,3 +34,5 @@ This documentation is organized into several sections, each covering a specific 
     -   [Deployment](./06-guides/01-deployment.md): Best practices for deploying the application in a production environment.
     -   [Development](./06-guides/02-development.md): A guide for developers who wish to contribute to the project.
     -   [Troubleshooting](./06-guides/03-troubleshooting.md): Solutions for common issues and debugging tips.
+
+- [Migration to Bun and Elysia](./06-guides/04-migration.md): compatibility changes and deployment checks.

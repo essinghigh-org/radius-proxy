@@ -18,12 +18,26 @@ export async function radiusAuthenticate(
   username: string,
   password: string,
   timeoutMs?: number,
-  port: number = config.RADIUS_PORT || 1812
+  port: number = config.RADIUS_PORT || 1812,
+  notifyTimeout = true
 ): Promise<RadiusResult> {
   const secret = config.RADIUS_SECRET;
+  if (!username || Buffer.byteLength(username) > 253 || !password || Buffer.byteLength(password) > 128) throw new Error('Invalid RADIUS credentials length')
   debug('[radius] authenticate start', { host, user: username })
   return new Promise((resolve, reject) => {
     const client = dgram.createSocket("udp4")
+    let settled = false
+    const notifyFailure = () => {
+      if (notifyTimeout) notifyAuthTimeout().catch(e => warn('[radius] host health update failed', e))
+    }
+    const fail = (err: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      try { client.close() } catch {}
+      notifyFailure()
+      reject(err)
+    }
     const id = crypto.randomBytes(1)[0]
     const authenticator = crypto.randomBytes(16)
 
@@ -78,48 +92,45 @@ export async function radiusAuthenticate(
       : (Number(config.RADIUS_TIMEOUT || 5) * 1000)
 
     const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
       client.close()
-      // Notify host manager about timeout to trigger potential health probe/failover
-      notifyAuthTimeout().catch(e => warn('[radius] notifyAuthTimeout error', e))
+      notifyFailure()
       resolve({ ok: false })
     }, effectiveTimeoutMs)
 
     client.on("message", (msg) => {
-      clearTimeout(timer)
-      client.close()
-
-      // Minimal sanity checks
-      if (!msg || msg.length < 20) {
-        warn('[radius] received malformed response (too short)')
-        resolve({ ok: false, raw: msg ? msg.toString("hex") : undefined })
+      if (settled) return
+      // Ignore unauthenticated or malformed packets without ending the real request.
+      if (msg.length < 20 || msg.length > 4096 || msg[1] !== id || msg.readUInt16BE(2) !== msg.length || ![2, 3, 11].includes(msg[0])) return
+      let offset = 20
+      let messageAuthenticator = -1
+      while (offset < msg.length) {
+        if (offset + 2 > msg.length) return
+        const length = msg[offset + 1]
+        if (length < 2 || offset + length > msg.length) return
+        if (msg[offset] === 80) {
+          if (length !== 18 || messageAuthenticator !== -1) return
+          messageAuthenticator = offset + 2
+        }
+        offset += length
+      }
+      // Require Message-Authenticator to resist forged RADIUS responses (Blast-RADIUS).
+      if (messageAuthenticator < 0) {
+        warn('[radius] dropping response without Message-Authenticator; enable it on the RADIUS server', { host })
         return
       }
-
-      const code = msg.readUInt8(0)
-      // Verify response authenticator per RFC2865 when secret is available to avoid spoofed replies.
-      try {
-        const respAuth = msg.slice(4, 20)
-        // Recompute: MD5(Code + Identifier + Length + RequestAuthenticator + Attributes + SharedSecret)
-        const lenBuf = Buffer.alloc(2)
-        lenBuf.writeUInt16BE(msg.length, 0)
-        const toHash = Buffer.concat([
-          Buffer.from([msg.readUInt8(0)]),
-          Buffer.from([msg.readUInt8(1)]),
-          lenBuf,
-          authenticator, // request authenticator we sent earlier
-          msg.slice(20), // attributes from response
-          Buffer.from(secret || "", "utf8"),
-        ])
-        const expected = crypto.createHash("md5").update(toHash).digest()
-        if (!expected.equals(respAuth)) {
-          warn('[radius] response authenticator mismatch; dropping response')
-          resolve({ ok: false, raw: msg.toString("hex") })
-          return
-        }
-      } catch (e) {
-        // Do not fail the entire flow on verification error; just warn and continue parsing.
-        warn('[radius] response authenticator verification error', e)
-      }
+      const responseAuth = crypto.createHash('md5').update(Buffer.concat([msg.subarray(0, 4), authenticator, msg.subarray(20), Buffer.from(secret)])).digest()
+      if (!crypto.timingSafeEqual(responseAuth, msg.subarray(4, 20))) return
+      const authenticated = Buffer.from(msg)
+      authenticator.copy(authenticated, 4)
+      authenticated.fill(0, messageAuthenticator, messageAuthenticator + 16)
+      const mac = crypto.createHmac('md5', secret).update(authenticated).digest()
+      if (!crypto.timingSafeEqual(mac, msg.subarray(messageAuthenticator, messageAuthenticator + 16))) return
+      settled = true
+      clearTimeout(timer)
+      client.close()
+      const code = msg[0]
 
       // 2 = Access-Accept, 3 = Access-Reject
       if (code === 2) {
@@ -159,6 +170,7 @@ export async function radiusAuthenticate(
                 const vendorLength = value.readUInt8(5)
 
                 if (vendorId === config.RADIUS_VENDOR_ID && vendorType === config.RADIUS_VENDOR_TYPE) {
+                  if (vendorLength < 2 || vendorLength + 4 > value.length) { resolve({ ok: false }); return }
                   const vendorValue = value.slice(6, 6 + vendorLength - 2).toString("utf8")
 
                   if (config.RADIUS_VALUE_PATTERN) {
@@ -207,43 +219,26 @@ export async function radiusAuthenticate(
           offset += l
         }
 
-        resolve({ ok: true, class: foundClass, raw: msg.toString("hex") })
+        resolve({ ok: true, class: allClasses.join(";") || foundClass, raw: msg.toString("hex") })
       } else {
         resolve({ ok: false, raw: msg.toString("hex") })
       }
     })
 
-    client.on("error", (err) => {
-      clearTimeout(timer)
-      try { client.close() } catch { }
-      reject(err)
-    })
+    client.on("error", fail)
 
-    // Compute Message-Authenticator (HMAC-MD5) per RFC2869 if present and then send.
+    // HMAC failures must fail closed.
     try {
-      const hmac = crypto.createHmac('md5', Buffer.from(secret, 'utf8')).update(packet).digest()
-      // find the Message-Authenticator attribute (type 80) in the packet and insert the value
-      let attrOff = 20
-      while (attrOff + 2 <= packet.length) {
-        const t = packet.readUInt8(attrOff)
-        const l = packet.readUInt8(attrOff + 1)
-        if (t === 80 && l === 18) {
-          for (let i = 0; i < 16; i++) packet[attrOff + 2 + i] = hmac[i]
-          break
-        }
-        if (l < 2) break
-        attrOff += l
-      }
-    } catch {
-      // ignore hmac failures; some servers don't require Message-Authenticator
+      const hmac = crypto.createHmac('md5', secret).update(packet).digest()
+      hmac.copy(packet, packet.length - 16)
+      // Connected UDP filters replies to the configured server address and port.
+      client.connect(port, host, () => {
+        client.send(packet, err => {
+          if (err) fail(err)
+        })
+      })
+    } catch (err) {
+      fail(err as Error)
     }
-
-    client.send(packet, port, host, (err) => {
-      if (err) {
-        clearTimeout(timer)
-        client.close()
-        reject(err)
-      }
-    })
   })
 }

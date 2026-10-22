@@ -20,8 +20,7 @@ type Config = {
   EMAIL_SUFFIX: string
   PERMITTED_CLASSES: string[]
   ADMIN_CLASSES: string[]
-  // Optional explicit list of allowed redirect URIs for the OAuth client.
-  // If empty, only same-origin redirects are allowed.
+  // Exact registered redirect URIs for the OAuth client; required at startup.
   REDIRECT_URIS: string[]
   // Map of class/group name -> array of Grafana team IDs
   CLASS_MAP: Record<string, number[]>
@@ -48,35 +47,11 @@ type Config = {
   RADIUS_VALUE_PATTERN?: string
 }
 
-function parseTomlSimple(content: string): Record<string, string> {
-  const out: Record<string, string> = {}
-  const lines = content.split(/\r?\n/)
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]
-    const line = rawLine.trim()
-    if (!line || line.startsWith("#")) continue
-    const eq = line.indexOf("=")
-    if (eq === -1) continue
-    const key = line.slice(0, eq).trim()
-    let val = line.slice(eq + 1).trim()
-    // If the value starts a multi-line array or inline table, accumulate until matching bracket
-    if ((val.startsWith("[") && !val.endsWith("]")) || (val.startsWith("{") && !val.endsWith("}"))) {
-      let acc = val
-      // track depth of nested brackets in case of nested arrays
-      let depth = (acc.match(/[\[{]/g) || []).length - (acc.match(/[\]}]/g) || []).length
-      while (depth > 0 && i + 1 < lines.length) {
-        i++
-        const next = lines[i]
-        acc += '\n' + next
-        depth = (acc.match(/[\[{]/g) || []).length - (acc.match(/[\]}]/g) || []).length
-      }
-      val = acc.trim()
-    }
-    // strip quotes for simple quoted strings
-    if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1)
-    out[key] = val
-  }
-  return out
+function parseToml(content: string): Record<string, string> {
+  // Bun handles quoting, escapes, comments, arrays and inline tables correctly.
+  return Object.fromEntries(Object.entries(Bun.TOML.parse(content)).map(([key, value]) => [
+    key, typeof value === 'string' ? value : JSON.stringify(value),
+  ]))
 }
 
 // Safe numeric parsing with fallback for corrupted values
@@ -94,30 +69,28 @@ function loadConfig(): Config {
   const exampleCfgPath = path.join(root, "config.example.toml")
   let base: Record<string, string> = {}
 
-  // For tests, always use config.example.toml
+  // Only tests use config.example.toml; deployments require explicit configuration.
   let cfgFile = ""
   if (process.env.NODE_ENV === 'test') {
     if (fs.existsSync(exampleCfgPath)) {
       cfgFile = exampleCfgPath
     }
   } else {
-    // Prefer explicit config.toml but fall back to config.example.toml if present (useful for examples)
+    // Examples must never supply credentials to a running deployment.
     if (fs.existsSync(cfgPath)) {
       cfgFile = cfgPath
-    } else if (fs.existsSync(exampleCfgPath)) {
-      cfgFile = exampleCfgPath
     }
   }
 
   if (cfgFile) {
     const content = fs.readFileSync(cfgFile, "utf8")
-    base = parseTomlSimple(content)
+    base = parseToml(content)
   }
 
   // Allow env vars to override
   const cfg: Config = {
     OAUTH_CLIENT_ID: process.env.OAUTH_CLIENT_ID || base["OAUTH_CLIENT_ID"] || "grafana",
-    OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "secret",
+    OAUTH_CLIENT_SECRET: process.env.OAUTH_CLIENT_SECRET || base["OAUTH_CLIENT_SECRET"] || "",
     RADIUS_HOST: process.env.RADIUS_HOST || base["RADIUS_HOST"] || "127.0.0.1",
     RADIUS_HOSTS: (() => {
       const rawList = process.env.RADIUS_HOSTS || base['RADIUS_HOSTS'] || ''
@@ -150,7 +123,7 @@ function loadConfig(): Config {
       const singleHost = process.env.RADIUS_HOST || base['RADIUS_HOST'] || '127.0.0.1'
       return [singleHost]
     })(),
-    RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "secret",
+    RADIUS_SECRET: process.env.RADIUS_SECRET || base["RADIUS_SECRET"] || "",
     RADIUS_PORT: safeParseNumber(process.env.RADIUS_PORT || base["RADIUS_PORT"], 1812),
     HTTP_HOST: process.env.HTTP_HOST || base["HTTP_HOST"] || "0.0.0.0",
     HTTP_PORT: safeParseNumber(process.env.HTTP_PORT || base["HTTP_PORT"], 54567),
@@ -238,6 +211,7 @@ function loadConfig(): Config {
       return out
     })(),
   }
+  if (process.env.NODE_ENV !== "test") validateConfig(cfg)
   return cfg
 }
 
@@ -257,7 +231,6 @@ function getConfig(): Config {
     if (fs.existsSync(exampleCfgPath)) watchPath = exampleCfgPath
   } else {
     if (fs.existsSync(cfgPath)) watchPath = cfgPath
-    else if (fs.existsSync(exampleCfgPath)) watchPath = exampleCfgPath
   }
 
   try {
@@ -271,6 +244,8 @@ function getConfig(): Config {
       if (_cachedConfig === null) _cachedConfig = loadConfig()
     }
   } catch {
+    if (_cachedConfig) console.warn('[config] reload rejected; keeping the last valid configuration')
+    // Do not include parser diagnostics: they can contain secret configuration values.
     // On error, fallback to last known config or fresh load
     _cachedConfig = _cachedConfig || loadConfig()
   }
@@ -308,7 +283,7 @@ function initConfigWatcher() {
     if (process.env.NODE_ENV === 'test') {
       watchPath = fs.existsSync(exampleCfgPath) ? exampleCfgPath : null
     } else {
-      watchPath = fs.existsSync(cfgPath) ? cfgPath : (fs.existsSync(exampleCfgPath) ? exampleCfgPath : null)
+      watchPath = fs.existsSync(cfgPath) ? cfgPath : null
     }
 
     if (!watchPath) return
@@ -317,7 +292,6 @@ function initConfigWatcher() {
         // Any change/rename reported for the watched file should invalidate
         // the cached config so subsequent accesses reload from disk.
         _cachedMtime = 0
-        _cachedConfig = null
       })
     } catch {
       // Ignore watcher setup failures and rely on the mtime-on-access logic.
@@ -328,3 +302,26 @@ function initConfigWatcher() {
 }
 
 initConfigWatcher();
+
+export function validateConfig(cfg: Config = config): void {
+  for (const key of ['OAUTH_CLIENT_SECRET', 'RADIUS_SECRET'] as const) {
+    if (!cfg[key] || ['secret', 'testing123', 'change-me'].includes(cfg[key])) throw new Error(`${key} must be explicitly configured with a non-example secret`)
+  }
+  if (cfg.OAUTH_CLIENT_SECRET.length < 32) throw new Error('OAUTH_CLIENT_SECRET must contain at least 32 characters')
+  if (!cfg.ISSUER) throw new Error('ISSUER must be configured')
+  const issuer = new URL(cfg.ISSUER)
+  if (!['https:', 'http:'].includes(issuer.protocol) || issuer.origin !== cfg.ISSUER) throw new Error('ISSUER must be an HTTP(S) origin without a trailing slash')
+  if (issuer.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(issuer.hostname)) throw new Error('Public ISSUER must use HTTPS')
+  if (!cfg.REDIRECT_URIS.length) throw new Error('REDIRECT_URIS must explicitly allow the OAuth callback')
+  for (const redirect of cfg.REDIRECT_URIS) {
+    const url = new URL(redirect)
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash || (url.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new Error('Invalid REDIRECT_URIS entry')
+  }
+  for (const key of ['HTTP_PORT', 'RADIUS_PORT', 'OAUTH_CODE_TTL', 'RADIUS_TIMEOUT', 'RADIUS_HEALTHCHECK_INTERVAL', 'RADIUS_HEALTHCHECK_TIMEOUT'] as const) {
+    if (!Number.isSafeInteger(cfg[key]) || cfg[key] <= 0 || cfg[key] > 2147483) throw new Error(`Invalid ${key}`)
+  }
+  if (!Number.isSafeInteger(cfg.OAUTH_REFRESH_TOKEN_TTL) || cfg.OAUTH_REFRESH_TOKEN_TTL <= 0 || cfg.OAUTH_REFRESH_TOKEN_TTL > 31536000) throw new Error('Invalid OAUTH_REFRESH_TOKEN_TTL')
+  if (cfg.HTTP_PORT > 65535 || cfg.RADIUS_PORT > 65535) throw new Error('Invalid port')
+  if (!/^[a-zA-Z0-9.-]+$/.test(cfg.EMAIL_SUFFIX)) throw new Error('Invalid EMAIL_SUFFIX')
+  if (cfg.RADIUS_VALUE_PATTERN) new RegExp(cfg.RADIUS_VALUE_PATTERN)
+}

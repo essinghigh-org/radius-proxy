@@ -1,70 +1,21 @@
 # Security
 
-`radius-proxy` is designed with security as a primary consideration. This document outlines the key security measures implemented to protect the authentication flow, the application itself, and the users.
+The service requires an explicitly configured issuer, callback allowlist and secrets. It never uses `config.example.toml` outside tests. The OAuth client secret must contain at least 32 characters, and known example secrets are rejected.
 
-## Transport Layer Security
+Callback URIs are matched exactly, including query strings, before authentication or code issuance. Codes are bound to the client and original redirect URI, expire, and are consumed atomically in this process. Refresh tokens rotate on use and retain their original expiration deadline. Replays fail. Invalid redemption attempts consume the submitted code or refresh token.
 
-It is strongly recommended to run `radius-proxy` behind a reverse proxy (like Nginx or Caddy) that provides TLS (HTTPS) termination. This ensures that all communication between the user's browser, Grafana, and the proxy is encrypted.
+PKCE supports S256 only. Challenge, method, scope, state and nonce survive the login page. The service rejects malformed challenges and requires the matching verifier during token exchange. ID tokens include the supplied nonce. UserInfo accepts access tokens only and checks issuer, audience, expiry and allowed signing algorithm.
 
-## OAuth 2.0 and OIDC Security
+The configured issuer is authoritative. Caller-supplied Host and X-Forwarded-* headers cannot alter token issuers, callback validation or discovery URLs. Browser credential submissions with a foreign Origin are rejected. Authorization attempts are limited to 20 per account and socket peer per minute; changing forwarding headers cannot bypass this. Token exchange uses a separate path and does not consume login rate limits. Behind a reverse proxy, users of the same account share this bucket; an attacker who knows a username can temporarily lock it out. Apply per-client request limits at the trusted edge proxy to reduce this account-lockout trade-off. Forwarded addresses are not trusted by the application.
 
-### PKCE (Proof Key for Code Exchange)
+Requests are limited to 16 KiB. Form handlers reject duplicate fields and binary values. Login HTML escapes query values. Responses include CSP, framing protection, no-sniff, same-origin referrer and no-store headers; an HTTPS issuer also enables HSTS.
 
--   **What it is**: PKCE (RFC 7636) is an extension to the Authorization Code flow that mitigates the threat of authorization code interception.
--   **Implementation**: `radius-proxy` fully supports PKCE. When Grafana (or another client) initiates a login with a `code_challenge` and `code_challenge_method`, the proxy stores these values along with the authorization code. During the token exchange, the client must provide a `code_verifier`. The proxy then validates the verifier against the stored challenge.
--   **Benefit**: This ensures that even if an authorization code is stolen, it is useless without the corresponding `code_verifier`, preventing attackers from exchanging it for a token.
--   **Code Reference**: `app/api/oauth/authorize/route.ts` (stores the challenge) and `app/api/oauth/token/route.ts` (verifies the code).
+RADIUS replies must have matching source, identifier and length, valid attributes, a valid Response Authenticator and a valid Message-Authenticator. Missing Message-Authenticator is rejected to prevent Blast-RADIUS-style response forgery. Configure and update every RADIUS server to send it on Accept, Reject and Challenge replies. PAP and the legacy RADIUS cryptography still require a trusted network or an encrypted tunnel; the bridge does not implement RadSec.
 
-### Strict Redirect URI Validation
+Email addresses are constructed from the authenticated username and operator-configured EMAIL_SUFFIX. A user-supplied email domain cannot select a different Grafana account.
 
--   **What it is**: Open redirect is a vulnerability where an attacker can use a legitimate application to redirect users to a malicious site. In OAuth 2.0, this can be used in phishing attacks.
--   **Implementation**: The proxy enforces a strict allowlist for redirect URIs. The `redirect_uri` provided by the client during the authorization request **must exactly match** one of the URIs in the `REDIRECT_URIS` configuration array.
--   **Benefit**: This prevents attackers from tricking the proxy into redirecting users with a valid authorization code to a server they control.
--   **Code Reference**: `app/api/oauth/authorize/route.ts` (`POST` handler).
+RSA signing keys are persisted with restricted permissions. Test keys are random, held only in memory and never written to disk. Legacy `jwt.hmac` files are not automatically loaded. An explicit HS256 secret must be at least 32 bytes. Signing-key failures stop startup rather than silently changing algorithms.
 
-### State Parameter
+Grafana API calls verify TLS by default. The optional insecure setting affects only those requests, never process-wide TLS verification. Calls reject redirects and time out after ten seconds. Prefer installing your internal CA using Bun's supported certificate configuration.
 
--   **What it is**: The `state` parameter is used to protect against Cross-Site Request Forgery (CSRF) attacks.
--   **Implementation**: The proxy correctly echoes back the `state` parameter provided by the client in the authorization request to the final redirect. It is the client's (Grafana's) responsibility to generate a unique `state` value and validate that it matches upon receiving the callback.
-
-## JWT (JSON Web Token) Security
-
-### Strong Signing Algorithms
-
--   **Default**: The proxy defaults to using **RS256** (RSA with SHA-256) for signing JWTs. This is an asymmetric algorithm, meaning it uses a private key to sign tokens and a public key to verify them.
--   **Benefit**: This is highly secure, as the private key never leaves the server. The public key can be safely distributed via the `/jwks.json` endpoint for clients like Grafana to use for verification.
--   **Key Management**: The proxy automatically generates a 2048-bit RSA key pair on first startup and stores it in the `.keys/` directory. This directory should be protected and persisted across deployments.
--   **Alternative**: For simpler setups, `HS256` (HMAC with SHA-256) is supported via the `JWT_HS256_SECRET` environment variable. This is a symmetric algorithm and is less secure if the secret is compromised.
--   **Code Reference**: `lib/jwt.ts`.
-
-### Token Expiration
-
--   **Access Tokens**: Are short-lived (default: 1 hour) to limit the window of opportunity for an attacker if a token is compromised.
--   **ID Tokens**: Also short-lived (default: 1 hour).
--   **Refresh Tokens**: Are long-lived (default: 90 days) but can only be used to obtain new access tokens and are stored securely by the proxy.
--   **Authorization Codes**: Are extremely short-lived (default: 10 minutes) and are single-use.
-
-## Application Security
-
-### HTTP Security Headers
-
-To protect against common web vulnerabilities, the proxy adds several security headers to its HTTP responses, particularly for user-facing pages.
-
--   `Content-Security-Policy`: Set to `default-src 'self'` to prevent cross-site scripting (XSS) by restricting where content can be loaded from.
--   `X-Content-Type-Options`: Set to `nosniff` to prevent the browser from MIME-sniffing a response away from the declared content-type.
--   `X-Frame-Options`: Set to `DENY` to prevent the login page from being embedded in an `<iframe>`, mitigating clickjacking attacks.
--   `Referrer-Policy`: Set to `strict-origin-when-cross-origin` to control how much referrer information is sent in requests.
--   `X-XSS-Protection`: Set to `1; mode=block` to enable the browser's built-in XSS filter.
-
--   **Code Reference**: `addSecurityHeaders` function in `app/api/oauth/authorize/route.ts`.
-
-### Filesystem and Secret Management
-
--   **Key Storage**: RSA keys and HMAC secrets are stored in the `.keys/` directory. This directory is included in `.gitignore` to prevent accidental check-in of secrets to version control.
--   **Configuration**: The main `config.toml` file is also ignored by Git. The recommended practice for production is to use environment variables for all secrets.
-
-## RADIUS Security
-
--   **Shared Secret**: All communication with the RADIUS server is protected by a shared secret, which is used to encrypt password attributes and validate response authenticators.
--   **Response Authenticator Validation**: The proxy validates the `Response-Authenticator` field in RADIUS responses to ensure they originate from a legitimate RADIUS server that knows the shared secret, protecting against UDP source address spoofing.
--   **Code Reference**: `lib/radius.ts`.
+This is a single-instance service. In-memory stores are bounded to 10,000 entries each and evict the oldest session at capacity. Restarts discard refresh tokens and authorization codes. See [migration notes](../06-guides/04-migration.md) for compatibility changes and validation limits.

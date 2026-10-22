@@ -3,7 +3,8 @@ import fs from "fs"
 import path from "path"
 import crypto from "crypto"
 import jwt from "jsonwebtoken"
-import { error, warn } from "@/lib/log"
+import { config } from "./config"
+import { getIssuer } from "./server-utils"
 import { findProjectRoot } from "./server-utils"
 
 type RSKeyInfo = { algo: "RS256"; privateKey: string; publicKey: string; kid: string }
@@ -14,7 +15,7 @@ const KEY_DIR = path.resolve(findProjectRoot(), ".keys")
 const HMAC_PATH = path.join(KEY_DIR, "jwt.hmac")
 
 function ensureKeyDir() {
-  if (!fs.existsSync(KEY_DIR)) fs.mkdirSync(KEY_DIR, { recursive: true })
+  if (!fs.existsSync(KEY_DIR)) fs.mkdirSync(KEY_DIR, { recursive: true, mode: 0o700 })
 }
 
 function loadOrCreateKeys(): KeyInfo {
@@ -24,29 +25,12 @@ function loadOrCreateKeys(): KeyInfo {
   const hmacEnv = process.env.JWT_HS256_SECRET || ""
   // If an HS256 secret is explicitly provided via env, prefer it
   if (hmacEnv) {
+    if (Buffer.byteLength(hmacEnv) < 32) throw new Error("JWT_HS256_SECRET must contain at least 32 bytes")
     return { algo: "HS256", secret: hmacEnv }
   }
-  // In test environments, provide a deterministic HS256 secret so unit tests are reproducible.
-  if (process.env.NODE_ENV === "test") {
-    try {
-      ensureKeyDir()
-      if (fs.existsSync(HMAC_PATH)) {
-        const secret = fs.readFileSync(HMAC_PATH, "utf8")
-        return { algo: "HS256", secret }
-      }
-      const testSecret = process.env.JWT_TEST_HMAC || "test-hmac-secret"
-      try {
-        fs.writeFileSync(HMAC_PATH, testSecret, { mode: 0o600 })
-      } catch {
-        warn('[jwt] failed to persist test HS256 secret; proceeding with in-memory test secret')
-      }
-      return { algo: "HS256", secret: testSecret }
-    } catch {
-      // Fallback to in-memory test secret if anything goes wrong
-      warn('[jwt] test key initialization failed; using in-memory test secret')
-      return { algo: "HS256", secret: process.env.JWT_TEST_HMAC || "test-hmac-secret" }
-    }
-  }
+  // Tests never write signing material into a deployment's key directory.
+  if (process.env.NODE_ENV === "test") return { algo: "HS256", secret: crypto.randomBytes(32).toString("hex") }
+  if (!!privEnv !== !!pubEnv) throw new Error("Provide both JWT_PRIVATE_KEY and JWT_PUBLIC_KEY")
   if (privEnv && pubEnv) {
     const kid = crypto.createHash('sha256').update(pubEnv).digest('base64url')
     return { algo: "RS256", privateKey: privEnv, publicKey: pubEnv, kid }
@@ -62,11 +46,7 @@ function loadOrCreateKeys(): KeyInfo {
     const kid = crypto.createHash('sha256').update(publicKey).digest('base64url')
     return { algo: "RS256", privateKey, publicKey, kid }
   }
-  // If an HMAC secret has been persisted to disk, load it so signed tokens survive restarts.
-  if (fs.existsSync(HMAC_PATH)) {
-    const secret = fs.readFileSync(HMAC_PATH, "utf8")
-    return { algo: "HS256", secret }
-  }
+  if (fs.existsSync(HMAC_PATH)) throw new Error("Remove legacy jwt.hmac and provision secure signing keys")
 
   // Attempt to generate an RSA keypair
   try {
@@ -80,16 +60,7 @@ function loadOrCreateKeys(): KeyInfo {
     const kid = crypto.createHash('sha256').update(publicKey).digest('base64url')
     return { algo: "RS256", privateKey, publicKey, kid }
   } catch (err) {
-    // If RSA generation fails, log and fall back to an HMAC secret
-    error('[jwt] failed to generate RSA keypair, falling back to HS256', err)
-    const secret = crypto.randomBytes(32).toString("hex")
-    try {
-      ensureKeyDir()
-      fs.writeFileSync(HMAC_PATH, secret, { mode: 0o600 })
-    } catch {
-      warn('[jwt] failed to persist HS256 secret to disk; tokens will not survive restarts')
-    }
-    return { algo: "HS256", secret }
+    throw new Error("Cannot persist RSA signing keys", { cause: err })
   }
 }
 
@@ -103,12 +74,12 @@ export function signToken(payload: object, opts?: jwt.SignOptions): string {
   return jwt.sign(payload, keyinfo.secret, { algorithm: "HS256", ...(opts || {}) })
 }
 
-export function verifyToken(token: string): string | object {
-  if (keyinfo.algo === "RS256") {
-    // Restrict allowed algorithms explicitly to prevent algorithm confusion attacks.
-    return jwt.verify(token, keyinfo.publicKey, { algorithms: ["RS256"] } as jwt.VerifyOptions)
-  }
-  return jwt.verify(token, keyinfo.secret, { algorithms: ["HS256"] } as jwt.VerifyOptions)
+export function verifyToken(token: string): jwt.JwtPayload {
+  const payload = jwt.verify(token, keyinfo.algo === "RS256" ? keyinfo.publicKey : keyinfo.secret, {
+    algorithms: [keyinfo.algo], issuer: getIssuer(), audience: config.OAUTH_CLIENT_ID,
+  })
+  if (typeof payload === "string" || !payload.sub || !payload.exp || payload.token_use !== "access") throw new Error("Invalid access token")
+  return payload
 }
 
 export function getKeyInfo(): KeyInfo {

@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server"
+
 import { verifyToken } from "@/lib/jwt"
 
 export async function GET(req: Request) {
   const auth = req.headers.get("authorization") || ""
-  if (!auth.startsWith("Bearer ")) return NextResponse.json({ error: "invalid_request" }, { status: 401 })
+  if (!auth.startsWith("Bearer ")) return Response.json({ error: "invalid_request" }, { status: 401 })
   const token = auth.slice("Bearer ".length)
   try {
     const payload = verifyToken(token) as Record<string, unknown>
@@ -13,8 +13,8 @@ export async function GET(req: Request) {
       : undefined
     const grafana_admin = typeof payload.grafana_admin === "boolean" ? payload.grafana_admin : undefined
     const role = typeof payload.role === "string" ? payload.role : undefined
-    return NextResponse.json({ sub, name: sub, groups, grafana_admin, role })
+    return Response.json({ sub, name: sub, groups, grafana_admin, role })
   } catch {
-    return NextResponse.json({ error: "invalid_token" }, { status: 401 })
+    return Response.json({ error: "invalid_token" }, { status: 401 })
   }
 }

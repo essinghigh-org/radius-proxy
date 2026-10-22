@@ -6,7 +6,7 @@
 
 When Grafana receives an `id_token` from the proxy, it uses the claims within the JWT payload to provision the user's session. `radius-proxy` generates a specific set of claims tailored for Grafana's consumption.
 
-**Code Reference**: The claims are assembled in `app/api/oauth/token/route.ts`.
+**Code Reference**: The claims are assembled in `routes/token.ts`.
 
 An example JWT payload might look like this:
 
@@ -58,7 +58,7 @@ This allows you to manage Grafana administrative privileges directly from your R
 
 A powerful feature of the proxy is its ability to automatically manage a user's team memberships in Grafana.
 
-**Code Reference**: `lib/grafana.ts` and the asynchronous block in `app/api/oauth/token/route.ts`.
+**Code Reference**: `lib/grafana.ts` and the asynchronous block in `routes/token.ts`.
 
 ### How It Works
 

@@ -1,12 +1,12 @@
 import { expect, test, describe, beforeEach, mock } from "bun:test";
 import crypto from "crypto";
 
-import { GET as authorizeGET, POST as authorizePOST } from "@/app/api/oauth/authorize/route";
-import { POST as tokenPOST } from "@/app/api/oauth/token/route";
-import { GET as userinfoGET } from "@/app/api/oauth/userinfo/route";
-import { GET as userinfoEmailsGET } from "@/app/api/oauth/userinfo/emails/route";
-import { GET as openidConfigGET } from "@/app/api/.well-known/openid-configuration/route";
-import { GET as jwksGET } from "@/app/api/.well-known/jwks.json/route";
+import { GET as authorizeGET, POST as authorizePOST } from "@/routes/authorize";
+import { POST as tokenPOST } from "@/routes/token";
+import { GET as userinfoGET } from "@/routes/userinfo";
+import { GET as userinfoEmailsGET } from "@/routes/emails";
+import { GET as openidConfigGET } from "@/routes/discovery";
+import { GET as jwksGET } from "@/routes/jwks";
 
 import { getStorage, closeStorage } from "@/lib/storage";
 import { config, _invalidateConfigCache } from "@/lib/config";
@@ -40,7 +40,7 @@ describe("Authentication Flow", () => {
   describe("GET /api/oauth/authorize", () => {
     test("should redirect to login page with query parameters", async () => {
       const request = new Request(
-        "http://localhost:3000/api/oauth/authorize?client_id=grafana&redirect_uri=http://localhost:3000/login/generic_oauth&response_type=code&state=123"
+        "http://localhost:3000/api/oauth/authorize?client_id=grafana&redirect_uri=https://grafana.example.com/login/generic_oauth&response_type=code&state=123"
       );
       const response = await authorizeGET(request);
 
@@ -51,7 +51,7 @@ describe("Authentication Flow", () => {
       expect(redirectUrl.pathname).toBe("/radius_login");
       expect(redirectUrl.searchParams.get("client_id")).toBe("grafana");
       expect(redirectUrl.searchParams.get("redirect_uri")).toBe(
-        "http://localhost:3000/login/generic_oauth"
+        "https://grafana.example.com/login/generic_oauth"
       );
       expect(redirectUrl.searchParams.get("state")).toBe("123");
     });
@@ -157,9 +157,7 @@ describe("Authentication Flow", () => {
       // Should redirect to error page with access_denied
       expect(redirectUrl.pathname).toBe("/radius_login");
       expect(redirectUrl.searchParams.get("error")).toBe("access_denied");
-      expect(redirectUrl.searchParams.get("error_description")).toBe(
-        "Class not permitted"
-      );
+      expect(redirectUrl.searchParams.has("error_description")).toBe(false);
     });
 
     test("should apply default scopes when none provided", async () => {
@@ -202,11 +200,8 @@ describe("Authentication Flow", () => {
       formData.append("scope", "openid profile imaginary");
       const request = new Request("http://localhost:54567/api/oauth/authorize", { method: "POST", body: formData });
       const response = await authorizePOST(request);
-      expect(response.status).toBe(302); // redirect with error
-      const loc = response.headers.get("Location");
-      expect(loc).toBeString();
-      const redirectUrl = new URL(loc!);
-      expect(redirectUrl.searchParams.get("error")).toBe("invalid_scope");
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toBe("invalid_scope");
     });
 
     test("should normalize duplicate and uppercase scopes", async () => {
@@ -253,6 +248,7 @@ describe("Authentication Flow", () => {
       // 2. Exchange code for token
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -286,6 +282,7 @@ describe("Authentication Flow", () => {
     test("should not return tokens for an invalid code", async () => {
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", "invalidcode");
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -314,6 +311,7 @@ describe("Authentication Flow", () => {
 
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", expiredCode);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -373,6 +371,7 @@ describe("Authentication Flow", () => {
 
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -429,6 +428,7 @@ describe("Authentication Flow", () => {
 
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -474,6 +474,7 @@ describe("Authentication Flow", () => {
 
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -537,7 +538,7 @@ describe("Authentication Flow", () => {
         groups: ["admin_group"],
         role: "GrafanaAdmin",
       };
-      const token = signToken(payload);
+      const token = signToken({ ...payload, iss: config.ISSUER, aud: config.OAUTH_CLIENT_ID, token_use: "access" }, { expiresIn: "1h" });
 
       const request = new Request("http://localhost:3000/api/oauth/userinfo", {
         headers: { Authorization: `Bearer ${token}` },
@@ -565,7 +566,7 @@ describe("Authentication Flow", () => {
   describe("/api/oauth/userinfo/emails", () => {
     test("should return user email from token if present", async () => {
       const payload = { sub: "testuser", email: "testuser@example.com" };
-      const token = signToken(payload);
+      const token = signToken({ ...payload, iss: config.ISSUER, aud: config.OAUTH_CLIENT_ID, token_use: "access" }, { expiresIn: "1h" });
 
       const request = new Request(
         "http://localhost:3000/api/oauth/userinfo/emails",
@@ -584,7 +585,7 @@ describe("Authentication Flow", () => {
 
     test("should return empty array if email not in token", async () => {
       const payload = { sub: "testuser" };
-      const token = signToken(payload);
+      const token = signToken({ ...payload, iss: config.ISSUER, aud: config.OAUTH_CLIENT_ID, token_use: "access" }, { expiresIn: "1h" });
 
       const request = new Request(
         "http://localhost:3000/api/oauth/userinfo/emails",
@@ -625,7 +626,7 @@ describe("Authentication Flow", () => {
   });
 
   describe("Email Trimming Tests", () => {
-    test("should extract username from email-like input and preserve email domain", async () => {
+    test("should extract username from email-like input and use the configured email domain", async () => {
       // 1. Login with email-like username
       const authFormData = new FormData();
       authFormData.append("user", "emailuser@company.com");
@@ -656,11 +657,12 @@ describe("Authentication Flow", () => {
       const entry = await storage.get(code!);
       expect(entry).toBeDefined();
       expect(entry?.username).toBe("emailuser"); // Should be trimmed
-      expect(entry?.emailDomain).toBe("company.com"); // Should preserve the domain
+      expect(entry?.emailDomain).toBe("example.local"); // Uses the configured domain
 
       // 2. Exchange code for tokens
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -706,7 +708,7 @@ describe("Authentication Flow", () => {
       expect(emailsResponse.status).toBe(200);
       const emails = await emailsResponse.json();
       expect(emails).toEqual([
-        { email: "emailuser@company.com", primary: true }, // Should now use the email from the token
+        { email: "emailuser@example.local", primary: true }, // Should now use the email from the token
       ]);
     });
 
@@ -746,6 +748,7 @@ describe("Authentication Flow", () => {
       // 2. Exchange code for tokens
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -813,6 +816,7 @@ describe("Authentication Flow", () => {
       // Get tokens and verify email construction
       const tokenFormData = new FormData();
       tokenFormData.append("grant_type", "authorization_code");
+      tokenFormData.set("redirect_uri", "https://grafana.example.com/login/generic_oauth");
       tokenFormData.append("code", code!);
       tokenFormData.append("client_id", "grafana");
       tokenFormData.append("client_secret", "secret");
@@ -872,7 +876,7 @@ describe("Authentication Flow", () => {
       const entry = await storage.get(code!);
       expect(entry).toBeDefined();
       expect(entry?.username).toBe("emailuser"); // Should take first part before @
-      expect(entry?.emailDomain).toBe("@malformed.com"); // Everything after the first '@' is considered the domain
+      expect(entry?.emailDomain).toBe("example.local"); // Uses the configured domain
     });
   });
 });

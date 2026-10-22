@@ -3,29 +3,12 @@ import { warn, error, info } from './log'
 
 // Create a custom fetch function that handles TLS configuration
 async function customFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  if (config.GRAFANA_INSECURE_TLS && url.startsWith('https://')) {
-    // Store the original NODE_TLS_REJECT_UNAUTHORIZED value
-    const originalTLSReject = process.env.NODE_TLS_REJECT_UNAUTHORIZED
-    
-    try {
-      // Temporarily disable TLS verification for this request
-      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-      info('[grafana] Temporarily disabling TLS verification for HTTPS request', { url: url.substring(0, 50) + '...' })
-      
-      const response = await fetch(url, options)
-      return response
-    } finally {
-      // Always restore the original value
-      if (originalTLSReject !== undefined) {
-        process.env.NODE_TLS_REJECT_UNAUTHORIZED = originalTLSReject
-      } else {
-        delete process.env.NODE_TLS_REJECT_UNAUTHORIZED
-      }
-    }
-  }
-  
-  // For HTTP URLs or when TLS verification is enabled, use regular fetch
-  return fetch(url, options)
+  return fetch(url, {
+    ...options,
+    redirect: 'error',
+    signal: AbortSignal.timeout(10000),
+    tls: { rejectUnauthorized: !config.GRAFANA_INSECURE_TLS },
+  })
 }
 
 // Types describing Grafana REST API shapes we touch in this helper.

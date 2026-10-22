@@ -35,7 +35,7 @@ The application is built with performance, reliability, and security in mind, of
 -   **High-Availability RADIUS Failover**: Can be configured with multiple RADIUS servers. It performs periodic background health checks and will automatically fail over to a healthy server if the primary one becomes unresponsive, ensuring high availability.
 -   **Dynamic Grafana Role Mapping**: Maps RADIUS `Class` attributes (or other configurable attributes) to Grafana roles. For example, a user with a specific RADIUS group can be automatically granted `GrafanaAdmin` privileges.
 -   **Automatic Grafana Team Synchronization**: Automatically adds users to specific Grafana teams based on their RADIUS group memberships. This is achieved by mapping RADIUS `Class` attributes to Grafana Team IDs.
--   **Secure Token Generation**: Generates signed JSON Web Tokens (JWTs) for both ID Tokens and Access Tokens. It supports RSA (RS256) with automatic key generation and rotation, as well as HS256 for simpler setups.
+-   **Secure Token Generation**: Generates signed JSON Web Tokens (JWTs) for both ID Tokens and Access Tokens. It supports RSA (RS256) with automatic key generation and persistence in `.keys/` (key changes require a restart), as well as HS256 for simpler setups.
 -   **Extensive Configuration**: All operational parameters are managed through a single `config.toml` file, with support for environment variable overrides for easy deployment in containerized environments.
--   **Lightweight and Performant**: Built on Next.js and Bun, the application is lightweight and optimized for fast startup and low resource consumption.
--   **Easy Deployment**: Can be run as a standalone Node.js application or as a Docker container, with a provided `docker-compose.yml` for quick setup.
+-   **Lightweight and Performant**: Built on Elysia and Bun, the application is lightweight and optimized for fast startup and low resource consumption.
+-   **Easy Deployment**: Can be run as a standalone Bun application or as a Docker container, with a provided `docker-compose.yml` for quick setup.
