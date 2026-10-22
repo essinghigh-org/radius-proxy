@@ -1,25 +1,3 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-  {
-    ignores: [
-      "node_modules/**",
-      ".next/**",
-      "out/**",
-      "build/**",
-      "next-env.d.ts",
-    ],
-  },
-];
-
-export default eslintConfig;
+import js from "@eslint/js"
+import tseslint from "typescript-eslint"
+export default tseslint.config({ ignores: ["dist/**", "node_modules/**"] }, js.configs.recommended, { files: ["public/*.js"], languageOptions: { globals: { document: "readonly", window: "readonly", fetch: "readonly", FormData: "readonly", setTimeout: "readonly", clearTimeout: "readonly" } } }, ...tseslint.configs.recommended, { rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }], "no-empty": ["error", { allowEmptyCatch: true }] } })

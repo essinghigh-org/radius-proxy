@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+
 import { getKeyInfo } from "@/lib/jwt"
 import crypto from "crypto"
 
@@ -19,7 +19,7 @@ export async function GET() {
       const jwkRec = jwk as Record<string, unknown>
       jwkRec.kid = kid
       jwkRec.use = 'sig'
-      return NextResponse.json(
+      return Response.json(
         { keys: [jwkRec] },
         { headers: CORS_HEADERS }
       )
@@ -37,15 +37,15 @@ export async function GET() {
         // so the message still appears prominently in developer consoles.
         console.error('[radius-proxy][jwks] failed to generate JWK', String(err))
       }
-      return NextResponse.json({ keys: [] }, { headers: CORS_HEADERS })
+      return Response.json({ keys: [] }, { headers: CORS_HEADERS })
     }
   }
-  return NextResponse.json({ keys: [] }, { headers: CORS_HEADERS })
+  return Response.json({ keys: [] }, { headers: CORS_HEADERS })
 }
 
 export async function OPTIONS(req: Request) {
   const acrh = req.headers.get('access-control-request-headers') || DEFAULT_ACRH
-  return new NextResponse(null, {
+  return new Response(null, {
     status: 204,
     headers: {
       ...CORS_HEADERS,

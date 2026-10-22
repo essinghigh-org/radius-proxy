@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, mock } from 'bun:test'
+import { describe, test, expect, beforeEach, mock, spyOn } from 'bun:test'
 import { radiusHostManager, getActiveRadiusHost, _testReloadHosts } from '@/lib/radius_hosts'
 import { _invalidateConfigCache } from '@/lib/config'
 
@@ -6,7 +6,7 @@ import { _invalidateConfigCache } from '@/lib/config'
 let responsiveHosts: Set<string>
 
 mock.module('@/lib/radius', () => ({
-    radiusAuthenticate: async (host: string, username: string, password: string) => {
+    radiusAuthenticate: async (host: string, _username: string, _password: string) => {
         // Simulate timeout by never responding if host not responsive
         if (!responsiveHosts.has(host)) {
             // Simulate timeout by throwing error
@@ -44,4 +44,18 @@ describe('RadiusHostManager Failover', () => {
         // When none responsive, active host cleared; getter returns first configured host
         expect(getActiveRadiusHost()).toBe('10.0.0.1')
     })
+})
+
+test('concurrent authentication failures share one health probe', async () => {
+    await Promise.resolve()
+    let release!: (alive: boolean) => void
+    const probe = spyOn(radiusHostManager, 'probeHost').mockImplementation(() => new Promise<boolean>(resolve => { release = resolve }))
+    try {
+        const first = radiusHostManager.onAuthTimeout()
+        const second = radiusHostManager.onAuthTimeout()
+        expect(second).toBe(first)
+        expect(probe).toHaveBeenCalledTimes(1)
+        release(true)
+        await Promise.all([first, second])
+    } finally { probe.mockRestore() }
 })

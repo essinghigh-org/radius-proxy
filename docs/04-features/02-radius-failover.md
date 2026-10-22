@@ -1,6 +1,6 @@
 # RADIUS Failover & Health Checks
 
-To ensure high availability, `radius-proxy` implements a robust RADIUS host management system that includes automatic failover and periodic health checks. This system guarantees that user authentications can continue even if the primary RADIUS server becomes unavailable.
+To ensure high availability, `radius-proxy` implements a robust RADIUS host management system that includes automatic failover and periodic health checks. The next login can use a responsive fallback after failover; an in-flight request is not retried automatically.
 
 This entire mechanism is managed by the `RadiusHostManager` class, located in `lib/radius_hosts.ts`.
 
@@ -37,7 +37,7 @@ To proactively monitor the status of all RADIUS servers, the manager runs a back
 -   **Trigger**: The health check cycle is triggered by a `setInterval` loop.
 -   **Interval**: The frequency of these checks is controlled by the `RADIUS_HEALTHCHECK_INTERVAL` parameter (default: 1800 seconds / 30 minutes).
 -   **Probe**: A health check consists of sending a RADIUS `Access-Request` packet to a host using a dummy username and password (configured via `RADIUS_HEALTHCHECK_USER` and `RADIUS_HEALTHCHECK_PASSWORD`).
--   **Success Criteria**: A probe is considered successful if the host responds at all. This includes both `Access-Accept` and `Access-Reject` responses. The goal is to check for liveness (the server is running and reachable), not to validate the dummy credentials.
+-   **Success Criteria**: A probe is considered successful if the host sends an authenticated reply with a valid Message-Authenticator and Response Authenticator. This includes both `Access-Accept` and `Access-Reject` responses. The goal is to check for liveness (the server is running and reachable), not to validate the dummy credentials.
 -   **Timeout**: Each probe has its own timeout, defined by `RADIUS_HEALTHCHECK_TIMEOUT` (default: 5 seconds). A timeout is considered a failure.
 
 ## Automatic Failover
@@ -46,8 +46,8 @@ Failover is the process of automatically switching the active host when the curr
 
 1.  **Reactive Failover (During User Authentication)**
     -   A user attempts to log in, and the proxy sends an `Access-Request` to the current active host.
-    -   The request times out (as defined by `RADIUS_TIMEOUT`).
-    -   The `radiusAuthenticate` function catches the timeout and notifies the `RadiusHostManager`.
+    -   The request times out (as defined by `RADIUS_TIMEOUT`) or the UDP socket reports a network error.
+    -   The `radiusAuthenticate` function reports the failure and notifies the `RadiusHostManager`.
     -   The manager immediately initiates a **failover sequence**.
 
 2.  **Proactive Failover (During Health Check)**

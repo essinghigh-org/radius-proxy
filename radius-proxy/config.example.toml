@@ -1,16 +1,18 @@
 # radius-proxy configuration
 
-# OAuth client credentials
+# Copy to config.toml and replace the placeholders. Examples are never loaded at runtime.
+# OAuth client credentials: generate a random secret with at least 32 characters.
 OAUTH_CLIENT_ID = "grafana"
-OAUTH_CLIENT_SECRET = "secret"
+OAUTH_CLIENT_SECRET = "change-me"
 OAUTH_CODE_TTL = 600
 OAUTH_REFRESH_TOKEN_TTL = 7776000
 REDIRECT_URIS = ["https://grafana.example.com/login/generic_oauth"]
 
+# RADIUS servers must send Message-Authenticator on all replies (Accept and Reject).
 # RADIUS servers (ordered). Use either RADIUS_HOST for single host OR RADIUS_HOSTS for multiple.
 # RADIUS_HOST = "192.168.0.191"
 RADIUS_HOSTS = ["192.168.0.191", "192.168.0.192", "192.168.0.193"]
-RADIUS_SECRET = "testing123"
+RADIUS_SECRET = "change-me"
 RADIUS_TIMEOUT = 5
 # Health check configuration (sends Access-Request periodically to detect host liveness)
 # Interval in seconds between background health checks (default 1800 = 30m)
@@ -28,7 +30,7 @@ RADIUS_ASSIGNMENT = 25
 # RADIUS_ASSIGNMENT = 26
 # RADIUS_VENDOR_ID = 9
 # RADIUS_VENDOR_TYPE = 1
-# RADIUS_VALUE_PATTERN = "shell:roles=([^,\s]+)"
+# RADIUS_VALUE_PATTERN = 'shell:roles=([^,\s]+)'
 
 # For other vendor-specific attributes, set appropriate vendor ID and type
 # RADIUS_VENDOR_ID = <vendor_id>
@@ -47,10 +49,10 @@ ADMIN_CLASSES = "admin_group"
 
 # Team Mapping: map RADIUS class/group names to Grafana team IDs
 GRAFANA_BASE_URL = "https://grafana.example.com"
-GRAFANA_SA_TOKEN = "glsa_xyzabc123"
+GRAFANA_SA_TOKEN = ""
 # Disable TLS certificate verification for Grafana API calls
 # Set to true if using internal/self-signed certificates (e.g., internal enterprise CA)
-# This temporarily disables certificate verification only during Grafana API requests
+# This applies only to Grafana API requests; use a trusted CA instead when possible.
 # ⚠️  WARNING: Only use in trusted networks! This disables certificate verification.
 GRAFANA_INSECURE_TLS = false
 CLASS_MAP = {

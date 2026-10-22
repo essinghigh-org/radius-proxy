@@ -14,17 +14,21 @@ class RadiusHostManager {
     private health: Map<string, HostHealth> = new Map()
     private activeHost: string | null = null
     private inProgress: boolean = false
+    private pendingTimeout: Promise<void> | null = null
     private intervalHandle: NodeJS.Timeout | null = null
 
     constructor() {
         this.reloadHostsFromConfig()
-        this.selectInitialActive()
-        this.scheduleHealthChecks()
     }
+
+    start() { this.selectInitialActive(); this.scheduleHealthChecks() }
+
+    stop() { if (this.intervalHandle) clearInterval(this.intervalHandle) }
 
     private reloadHostsFromConfig() {
         const list = Array.isArray(config.RADIUS_HOSTS) ? config.RADIUS_HOSTS : [config.RADIUS_HOST].filter(Boolean)
         this.hosts = list.filter(Boolean)
+        if (this.activeHost && !this.hosts.includes(this.activeHost)) this.activeHost = null
         for (const h of this.hosts) {
             if (!this.health.has(h)) {
                 this.health.set(h, { host: h, lastOkAt: null, lastTriedAt: null, consecutiveFailures: 0 })
@@ -40,6 +44,7 @@ class RadiusHostManager {
     }
 
     getActiveHost(): string {
+        this.reloadHostsFromConfig()
         if (this.activeHost) return this.activeHost
         // Fallback: first host while we have not yet validated any
         return this.hosts[0] || config.RADIUS_HOST
@@ -79,6 +84,7 @@ class RadiusHostManager {
     }
 
     async backgroundHealthCycle() {
+        this.reloadHostsFromConfig()
         // If we have an active host, probe it; if it's down trigger failover attempts immediately.
         if (this.activeHost) {
             const ok = await this.probeHost(this.activeHost)
@@ -126,7 +132,7 @@ class RadiusHostManager {
         try {
             debug('[radius-hosts] probing host', { host })
             const port = Number(config.RADIUS_PORT || 1812)
-            const res = await radiusAuthHost(host, hcUser, hcPass, timeoutMs, port)
+            const res = await radiusAuthHost(host, hcUser, hcPass, timeoutMs, port, false)
             if (res.ok) {
                 entry.lastOkAt = Date.now()
                 entry.consecutiveFailures = 0
@@ -135,7 +141,7 @@ class RadiusHostManager {
             }
             entry.consecutiveFailures++
             debug('[radius-hosts] probe negative response', { host })
-            return true // Any response (accept/reject) counts as alive per requirements
+            return !!res.raw // Only authenticated responses count as alive.
         } catch (e) {
             entry.consecutiveFailures++
             debug('[radius-hosts] probe exception', { host, error: (e as Error).message })
@@ -144,14 +150,18 @@ class RadiusHostManager {
     }
 
     // Called when an authentication attempt times out to opportunistically verify active host
-    async onAuthTimeout() {
-        warn('[radius-hosts] auth timeout detected; probing active host')
-        if (this.activeHost) {
-            const alive = await this.probeHost(this.activeHost)
-            if (!alive) await this.failover()
-        } else {
-            await this.backgroundHealthCycle()
-        }
+    onAuthTimeout(): Promise<void> {
+        if (this.pendingTimeout) return this.pendingTimeout
+        this.pendingTimeout = (async () => {
+            warn('[radius-hosts] auth failure detected; probing active host')
+            if (this.activeHost) {
+                const alive = await this.probeHost(this.activeHost)
+                if (!alive) await this.failover()
+            } else {
+                await this.backgroundHealthCycle()
+            }
+        })().finally(() => { this.pendingTimeout = null })
+        return this.pendingTimeout
     }
 }
 
