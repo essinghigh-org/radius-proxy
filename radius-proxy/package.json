@@ -20,12 +20,12 @@
     "jsonwebtoken": "9.0.3"
   },
   "devDependencies": {
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "@types/jsonwebtoken": "9.0.10",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "eslint": "10.14.0",
     "@eslint/js": "10.0.1",
-    "typescript-eslint": "8.72.0",
+    "typescript-eslint": "8.72.1",
     "@typescript/native": "npm:typescript@7.0.2"
   },
   "overrides": {
